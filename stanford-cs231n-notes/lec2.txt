@@ -1,0 +1,77 @@
+CS231n - Lec. 2 - Notes
+
+Keywords:
+- [Semantic Gap,
+- viewpoint variation,
+- illumination,
+- Deformation,
+- Occlusion,
+- background clutter,
+- interclass variation]
+- Manhattan Distance/L1
+- Nearest Neighbor - FLANN library to speed up this algo
+- k-NN
+- CIFAR-10 data set (32x32) 10 labels, 50k train, 10k test
+
+
+
+
+High Level Topics:
+- Challanges! {
+	semantic gap: 'representing img in matrix form.. that is the gap',
+	viewpoint variation: 'changes in the matrix of numbers with respect to the scene of the image i.e. lighting, focal pint, zoom level',
+	illumination: 'brightness values can occlude objects in the matrix, but our eyes can pick it up (learned representations??)',
+	Deformation: 'strange arrangements of objects being deformed',
+	Occlusion: 'part of img hidden',
+	background clutter: 'blending of foreground/background',
+	interclass variation: 'variance of same objects i.e. breed of dog'
+	}
+- What does an img classifier look like:
+	+ can use heuristics to build a custom cat algorithm... but what happens if you want a boat..? back to the drawing a board. not good! use data!
+- Nearest Neighbor Approach:
+	+ Remember whole training set of imgs, compares test img against all neighbors, classify using tag of the nearest neighbor.
+	+ nearest is a distance metric (manhattan/L1 --> 0 = identical img, Euclidean/L2)
+	+ manhattan = get absolute values, subtract img1 from img2 and sum.
+	+ Euclidian is the sum of squares
+	+ very slow ad need to remember whole training set in memory.
+	+ instant compute at train, very slow at test, NN is opposite... (constant compute time).
+	+ K-NN uses a majority vote and the boundaires smooth out. helps with over fitting
+	+ KNN on imgs NEVER USED, due to test runtime and the unintuitiveness of high Dim distance metrics
+- Linear Classification: f(x[sub-i],W,b) = Wx[sub-i]+b
+	+ Parametric Approach: [32x32x3] (3072 numbers total per img) -->
+	f(x,W) x=img, W=parameters --> outputs 10 nums indicating class scores.
+	+ so... ^ we want a function that takes in 3072 nums and returns 10 nums
+	+ f(x,W) = Wx + b --> as matrix multi -->  10x1 = 10x3072 * 3072x1 + 10x1
+	+ for each image, create a column vector, multiply it by each unqie row vector of weights for each class. add each classes' bias to the result and then compare all three outputs, highest is what category to assign to image. The weights are unique and need to do a good job across all categories for your training images. (think about cat classifier example at min 34:50)
+	+ Different Interpretations:
+		1. hyper plane dividing up space.
+		2. template approach where each row of W is a template (avg representation for a class, and we are dot producting the x by each template and seeing what is the best representation).
+		3. Mapping from img space to label space
+		4. Every score is just a weighted sum of all the pixel values in the img and we get to choose the weights. It is just counting up colors at iff spatial postions.
+	+ If you take the weights for each class, reshape them back into an imgs' dimmensions and plot them, you will essentially get a template for each class. E.g. In CIFAR-10 a horse template might have 2 heads because horses face left and right in imgs in the training set. CNNs can have multiple templates per class.
+	+ what about weights that are the mean for all class's imgs? Well linear classifier does not really optimize for the means, that is to say the minima probably might not be the mean, but the mean could be a good heuristic to initlialize the weights at pre-training.
+	+ Need a loss function to quantify the goodness of a set of W, in such a way that the set of W minimizes the loss function.
+
+
+
+Key Papers:
+-
+
+
+Questions to Ask:
+- can nonlinear transformations be represented as a transformation matricies.
+
+
+
+QUICK HISTORY OF ImageNet Challange: ---------------------------------------
+
+--------------------------------- -END- ------------------------------------
+
+
+
+QUICK HISTORY OF CNNs: -----------------------------------------------------
+
+--------------------------------- -END- ------------------------------------
+
+
+
