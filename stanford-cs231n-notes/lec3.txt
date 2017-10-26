@@ -1,0 +1,61 @@
+CS231n - Lec. 3 - Notes
+
+Goal: We need to define a loss function and determine a way to optimize it to efficiently find the best set of parameters.
+
+Check out: http://vision.stanford.edu/teaching/cs231n-demos/linear-classify/
+
+Keywords:
+- loss function, optimization of parameters, multiclass SVM loss, hinge loss, regularization (L1/L2/Elastic Net, Max Norm, Dropout), gradient (analytic/numerical), gradient check, gradient descent, Momentum, SGD,
+
+
+High Level Topics: ----------------------------------------------------
+Multiclass SVM Loss
+- Treat each estimates for a given class as a vector. for each estimate in the vector sum the max(0, incorrect_label - correct_label + 1). Then for all vectors take the average and this is the Loss for the vectors of W. i.e. s = f(x_i,W)
+- Bug with this loss function by itself... W=0 is not unique due to scalling. The subspace scales linearly. So how do we fix this?
+
+Regularization!
+- Which captures the 'niceness' of your W...
+- Adding this regularization to your loss function forms a tug of war. But this might result in a slightly worse error (more training instances missclassified; however, it makes your test results better.) L2 more common...
+- Why do we want regularization? Pick between the same Ws in a subspace that achieves the most diffused weights. Intuitively we want to spread out the Ws.
+-Regularization is a function of only the weights R(W)
+
+Softmax Classifier (multinomial Log Reg)
+- Treat scores as unormalized log probabilities of the classes.
+- Consider:
+	+ s=f(x[sub-i];W)
+	+ Then.. P(Y=k|X=x_i) = (e^s_k)/(sum_j e^s_j) where s = ^
+	+ Finally.. L_i = -log(e^s_y_i)/(sum_j e^s_j))
+- The output from NN is a vector of scores (the unormalized log probs) Exponentiate each value to normalize the probabilities. Next all probabilities must sum to 1, add up all values and divide iteratively to get probabilities.
+- e.g. if cat had a prob of 0.13 the L_i = -log(0.13)=0.89
+- We want to max the log likelihood of the True class and in our loss function we want to minimize negative log likelihood of the true class. Why we went from 0.13 to 0.89. the negative log likelihood.
+- What do we expect the min/max of L_i to be?
+	+ If your class probability is 1, the -log(1) = 0 = MIN
+	+ Highest possible loss is infinite if you class probability is very close to or = 0. same bounds as SVM... (0, inf]
+- When running optimization a santiy check can be to look at the negative log likelihood from first run when the weights are all very small and close to one. We should see -log(1/num classes). As optimization continues we expect to see numbers going to zero. If we get negatives then we know something has gone wrng due to the functional form of -log() bounds.
+
+SVM vs Softmax
+- SVM uses hinge loss, Softmax uses cross-entropy loss
+- If the margins are sufficiently LARGE enough, then SVM has a degree of robustness to variations in the scores. e.g. [10,-100,-100] y_i = 0 Then the SVM doesnt express any care to tune the -100 values, because the large margin has already been met. But Softmax will always express a preference.
+- SVM cares about a local part of the space, beyond that it is invariant, where as softmax considers more area ofthe total space when seperating classes, the whole data cloud)
+
+Optimization:
+- Follow the slope, in 1-d this is the derivative of the function, in n-d this is a gradient. (the gradient is the vector of partial derivatives)
+- Basically evaluating the numerical gradient for each dimension and determining the greatest slope. But this is very slow, because you check the gradient at ever dimension before you even take a step.
+- Aha, take the analytic gradient which is very fast, though slightly error prone.
+- Mini batch gradient descent, use a mini-batch size that fits on your GPU's memory (6 gig 12 gig etc)
+- Find a good learning rate. Sometimes start out high and the ndecay it to settle into a small pocket.
+- Momentum, SGD, several forms of mini-batch
+--------------------------------  -END-  --------------------------------
+
+Code Samples:
+-Implmenting multiclass SVM loss:
+def L_i_vectorized(x,y,W):
+	"""
+	x = single vector [weights], y = integer [label], W = weight Matrix
+
+	"""
+	scores = W.dot(x)
+	margins = np.maximum(0,scores-scores[y] + 1)
+	margins[y] = 0
+	loss_i = np.sum(margins)
+	return loss_i
