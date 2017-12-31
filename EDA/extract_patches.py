@@ -87,7 +87,8 @@ z = z position of slice in world coordinates mm
 				(p_y >= (center[1] - mask_height)) &
 				(p_y <= (center[1] + mask_height))):
 				
-				mask[int((np.abs(p_y-origin[1]))/spacing[1]),int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
+				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
+					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
 			
 	
 	# TODO:  The height and width seemed to be switched. 
@@ -138,7 +139,9 @@ def normalize_img(img):
 	new_spacing = [1,1,1]  # New spacing to be 1.0 x 1.0 x 1.0 mm voxel size
 	interpolator_type = sitk.sitkLinear
 
-	return sitk.Resample(img, np.array(new_size, dtype="uint32").tolist(), sitk.Transform(), interpolator_type, img.GetOrigin(), new_spacing, img.GetDirection(), 0.0, img.GetPixelIDValue())
+	return sitk.Resample(img, np.array(new_size, dtype="uint32").tolist(), 
+		sitk.Transform(), interpolator_type, img.GetOrigin(), 
+		new_spacing, img.GetDirection(), 0.0, img.GetPixelIDValue())
 	
 
  #####
