@@ -31,7 +31,8 @@ if not os.path.exists(output_path+"class_1"):
 
 #
 # The locations of the nodes
-df_node = pd.read_csv(luna_path+"candidates_V2.csv")
+#df_node = pd.read_csv(luna_path+"candidates_V2.csv")
+df_node = pd.read_csv(luna_path+"candidates_with_annotations.csv")
 
 
 def make_mask(center,diam,z,
@@ -180,8 +181,10 @@ for fcount, img_file in enumerate(tqdm(file_list)):
 		candidate_x = cur_row["coordX"]
 		candidate_y = cur_row["coordY"]
 		candidate_z = cur_row["coordZ"]
-		#diam = cur_row["diameter_mm"]  # Only defined for true positives
-		diam=30
+		diam = cur_row["diameter_mm"]  # Only defined for true positives
+		if np.isnan(diam):
+			diam = 30.0
+		
 		class_id = cur_row["class"]
 		
 		mask_width = 32 # This is really the half width so window will be double this width
