@@ -35,9 +35,9 @@ df_node = pd.read_csv(luna_path+"candidates_V2.csv")
 
 
 def make_mask(center,diam,z,
-			  width,height, depth, 
-			  spacing, origin,  
-			  mask_width=32, mask_height=32, mask_depth=32):
+	width,height, depth, 
+	spacing, origin, 
+	mask_width=32, mask_height=32, mask_depth=32):
 	"""
 Center : centers of circles px -- list of coordinates x,y,z
 diam : diameters of circles px -- diameter
@@ -196,18 +196,18 @@ for fcount, img_file in enumerate(tqdm(file_list)):
 		# Transverse slice 2D view - Y-X plane
 		# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
 		img_transverse = normalizePlanes(img_array[voxel_center[2], 
-												   bbox[0][0]:bbox[0][1], 
-												   bbox[1][0]:bbox[1][1]])
+			bbox[0][0]:bbox[0][1], 
+			bbox[1][0]:bbox[1][1]])
 		
 		# Sagittal slice 2D view - Z-Y plane
 		img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1], 
-												 bbox[0][0]:bbox[0][1], 
-												 voxel_center[0]])
+			bbox[0][0]:bbox[0][1], 
+			voxel_center[0]])
 		
 		# Coronal slice 2D view - Z-X plane
 		img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1], 
-												voxel_center[1], 
-												bbox[1][0]:bbox[1][1]])
+			voxel_center[1], 
+			bbox[1][0]:bbox[1][1]])
 
 		# Save the transverse patch to file
 		imsave(output_path
