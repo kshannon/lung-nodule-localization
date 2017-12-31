@@ -5,6 +5,7 @@
 import SimpleITK as sitk   # pip install SimpleITK
 import numpy as np
 import os
+import pathlib
 from glob import glob
 import pandas as pd
 
@@ -18,16 +19,15 @@ from scipy.misc import imsave
 luna_path = "/media/tony/TOSHIBA EXT/luna/" 
 luna_subset_path = luna_path + "subset0/"
 output_path = "./patches/"
+train_path = output_path + "train/"
+validation_path = output_path + "validation/"
 file_list=glob(luna_subset_path+"*.mhd")
 
 # Create the output directories if they don't exist
-if not os.path.exists(output_path):
-    os.makedirs(output_path)
-if not os.path.exists(output_path+"class_0"):
-    os.makedirs(output_path+"class_0")
-if not os.path.exists(output_path+"class_1"):
-    os.makedirs(output_path+"class_1")
-
+pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
+pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
+pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
+pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
 
 #
 # The locations of the nodes
@@ -183,7 +183,7 @@ for fcount, img_file in enumerate(tqdm(file_list)):
 		candidate_z = cur_row["coordZ"]
 		diam = cur_row["diameter_mm"]  # Only defined for true positives
 		if np.isnan(diam):
-			diam = 30.0
+			diam = 30.0  # If NaN, then just use a default of 30 mm
 		
 		class_id = cur_row["class"]
 		
@@ -216,7 +216,15 @@ for fcount, img_file in enumerate(tqdm(file_list)):
 			bbox[1][0]:bbox[1][1]])
 
 		# Save the transverse patch to file
-		imsave(output_path
+
+		# Flip a coin to determine if this should be placed 
+		# in the training or validation dataset. (70/30 split)
+		if (np.random.random_sample() < 0.3):
+			path_name = validation_path
+		else:
+			path_name = train_path
+
+		imsave(path_name
 			+ "class_{}/".format(class_id)
 			+ seriesuid
 			+ "_{}_{}_{}.png".format(candidate_x, candidate_y, candidate_z),
