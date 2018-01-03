@@ -1,7 +1,5 @@
 #! /usr/bin/env python
 
-__authors__ = "Tony Reina, Kyle Shannon, Suman Gunnala, Anil Luthra"
-
 # Thanks to Jonathan Mulholland and Aaron Sander from Booz Allen Hamilton
 # who made this code public as a part of the Kaggle Data Science Bowl 2017 contest.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
@@ -20,11 +18,11 @@ import h5py
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.misc import imsave
+from scipy.misc import imsave # might need: conda install Pillow
 
 # argparse utility for specifying dim size, to save pngs, and the data dir
 parser = argparse.ArgumentParser(description='Specify patch dimmensions,\
- 								data dir e.g. /home/data/,\
+								data dir e.g. /home/data/,\
 								the LUNA subset num,\
 								and T/F to save pngs',
 								add_help=True)
@@ -51,16 +49,16 @@ DF_NODE = pd.read_csv(DATA_DIR + "csv-files/candidates_with_annotations.csv")
 
 # Helper Functions
 def normalizePlanes(npzarray):
-    """
-    Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
-    All other HU will be masked. Then we normalize pixel values between 0 and 1.
-    """
-    maxHU, minHU = 400., 1000.
-    npzarray = (npzarray - minHU) / (maxHU - minHU)
-    npzarray[npzarray>1] = 1.
-    npzarray[npzarray<0] = 0.
+	"""
+	Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
+	All other HU will be masked. Then we normalize pixel values between 0 and 1.
+	"""
+	maxHU, minHU = 400., 1000.
+	npzarray = (npzarray - minHU) / (maxHU - minHU)
+	npzarray[npzarray>1] = 1.
+	npzarray[npzarray<0] = 0.
 
-    return npzarray
+	return npzarray
 
 def normalize_img(img):
 	"""
@@ -89,7 +87,7 @@ def normalize_img(img):
 
 
 def make_mask(center,diam,z,width,height,depth,spacing,origin,
-              mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
+			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
 	"""
 	Center : centers of circles px -- list of coordinates x,y,z
 	diam : diameters of circles px -- diameter
@@ -159,142 +157,183 @@ def make_mask(center,diam,z,width,height,depth,spacing,origin,
 	return mask, bbox
 
 
-def hdf5_writer(): # TODO
-	"""
-	open hdf5, write data yield, when nothing else to write close hd5f and return
-	"""
-	pass
+# def hdf5_writer(data,class_id,uuid,patch_dim):
+# 	"""
+# 	open hdf5, write data yield, when nothing else to write close hd5f and return
+# 	"""
+# 	f = h5py.File(DATA_DIR + 'test.hdf5', 'w') #4096
+# 	dataset = f.create_dataset('')
+#
+# 				# print(np.ravel(img_transverse, order='C').shape)
+# 				# print(np.ravel(img_sagittal, order='C').shape)
+# 				# print(np.ravel(img_coronal, order='C').shape)
+#
+# 				# re_tst = np.reshape(img_transverse, (PATCH_DIM,PATCH_DIM), order='C')
+# 	pass
+
+
 
 def main():
 
-	for fcount, img_file in enumerate(tqdm(FILE_LIST)):
+		for fcount, img_file in enumerate(tqdm(FILE_LIST)):
 
-		base=os.path.basename(img_file)  # Strip the filename out
-		seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
-		mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
+			base=os.path.basename(img_file)  # Strip the filename out
+			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
+			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
 
-		"""
-		Extracts 2D patches from the 3 planes (transverse, coronal, and sagittal).
+			"""
+			Extracts 2D patches from the 3 planes (transverse, coronal, and sagittal).
 
-		The sticky point here is the order of the axes. Numpy is z,y,x and SimpleITK is x,y,z.
-		I"ve found it very difficult to keep the order correct when going back and forth,
-		but this code seems to pass the sanity checks.
-		"""
-		# Load the CT scan (3D .mhd file)
-		itk_img = sitk.ReadImage(img_file)  # indices are x,y,z (note the ordering of dimesions)
+			The sticky point here is the order of the axes. Numpy is z,y,x and SimpleITK is x,y,z.
+			I"ve found it very difficult to keep the order correct when going back and forth,
+			but this code seems to pass the sanity checks.
+			"""
+			# Load the CT scan (3D .mhd file)
+			itk_img = sitk.ReadImage(img_file)  # indices are x,y,z (note the ordering of dimesions)
 
-		# Normalize the image spacing so that a voxel is 1x1x1 mm in dimension
-		itk_img = normalize_img(itk_img)
+			# Normalize the image spacing so that a voxel is 1x1x1 mm in dimension
+			itk_img = normalize_img(itk_img)
 
-		# SimpleITK keeps the origin and spacing information for the 3D image volume
-		img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
-		slice_z, height, width = img_array.shape
-		origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
-		spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
+			# SimpleITK keeps the origin and spacing information for the 3D image volume
+			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
+			slice_z, height, width = img_array.shape
+			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
+			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
-		for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
+			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 
-			# This is the real world x,y,z coordinates of possible nodule (in mm)
-			candidate_x = cur_row["coordX"]
-			candidate_y = cur_row["coordY"]
-			candidate_z = cur_row["coordZ"]
-			diam = cur_row["diameter_mm"]  # Only defined for true positives
-			if np.isnan(diam):
-				diam = 30.0  # If NaN, then just use a default of 30 mm
+				# This is the real world x,y,z coordinates of possible nodule (in mm)
+				candidate_x = cur_row["coordX"]
+				candidate_y = cur_row["coordY"]
+				candidate_z = cur_row["coordZ"]
+				diam = cur_row["diameter_mm"]  # Only defined for true positives
+				if np.isnan(diam):
+					diam = 30.0  # If NaN, then just use a default of 30 mm
 
-			class_id = cur_row["class"] #0 for false, 1 for true nodule
+				class_id = cur_row["class"] #0 for false, 1 for true nodule
 
-			mask_width = 32 # This is really the half width so window will be double this width
-			mask_height = 32 # This is really the half height so window will be double this height
-			mask_depth = 32 # This is really the half depth so window will be double this depth
+				mask_width = 32 # This is really the half width so window will be double this width
+				mask_height = 32 # This is really the half height so window will be double this height
+				mask_depth = 32 # This is really the half depth so window will be double this depth
 
-			center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
-			voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
+				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
+				voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
 
-			# Calculates the bounding box (and ROI mask) for desired position
-			mask, bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
-								   width, height, slice_z, spacing, origin,
-								   mask_width, mask_height, mask_depth)
+				# Calculates the bounding box (and ROI mask) for desired position
+				mask, bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
+									   width, height, slice_z, spacing, origin,
+									   mask_width, mask_height, mask_depth)
 
-			# Transverse slice 2D view - Y-X plane
-			# a numpy array size of DIM x DIM
-			# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
-			img_transverse = normalizePlanes(img_array[voxel_center[2],
-				bbox[0][0]:bbox[0][1],
-				bbox[1][0]:bbox[1][1]])
+				# Transverse slice 2D view - Y-X plane
+				# a numpy array size of DIM x DIM
+				# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
+				img_transverse = normalizePlanes(img_array[voxel_center[2],
+					bbox[0][0]:bbox[0][1],
+					bbox[1][0]:bbox[1][1]])
 
-			# Sagittal slice 2D view - Z-Y plane
-			img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-				bbox[0][0]:bbox[0][1],
-				voxel_center[0]])
+				# Sagittal slice 2D view - Z-Y plane
+				img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+					bbox[0][0]:bbox[0][1],
+					voxel_center[0]])
 
-			# Coronal slice 2D view - Z-X plane
-			img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-				voxel_center[1],
-				bbox[1][0]:bbox[1][1]])
-
-		#	hdf5_writer() #TODO
-			#TODO:
-			# - want to open the hdf5 dataset at start of loop
-			# - possibly flatten the numpy array, save it to hdf5 along with
-			# - UUID, class type, dimmensions for reshape purposes, what else?
+				# Coronal slice 2D view - Z-X plane
+				img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+					voxel_center[1],
+					bbox[1][0]:bbox[1][1]])
 
 
-			print(img_file)
-			print("Class = {}".format(class_id))
-			plt.figure(figsize=(15,15))
-			plt.subplot(1,3,1)
-			plt.imshow(img_transverse, cmap='bone')
-			plt.title('Transverse view')
-			plt.subplot(1,3,2)
-			plt.imshow(img_sagittal, cmap='bone')
-			plt.title('Sagittal view')
-			plt.subplot(1,3,3)
-			plt.imshow(img_coronal, cmap='bone')
-			plt.title('Coronal view')
-			plt.show()
 
-			if SAVE_IMG:
-				imsave(DATA_DIR + "class_{}_id_{}_xyz_{}_{}_{}.png".format(
-						class_id,
-						seriesuid,
-						candidate_x,
-						candidate_y,
-						candidate_z), img_transverse)
+				data_pack = [img_transverse, img_sagittal, img_coronal]
+				# Send patches and meta-data to hdf5-writer method
+				# hdf5_writer(outfile,data_pack,class_id,seriesuid,PATCH_DIM)
+				for idx, img in enumerate(data_pack):
+					# img = np.flatten(img, order='C') #or ravel, but makes shallow copy
+					dataset = HDF5_DATA.create_dataset(str(idx) + 'patch', data=np.ravel(img, order='C')) #,+seriesuid
+					dataset.attrs['seriesuid'] = seriesuid
+					dataset.attrs['class_id'] = class_id
+					# dataset.attrs[]
+
+				print(img_file)
+				print("Class = {}".format(class_id))
+				plt.figure(figsize=(15,15))
+				plt.subplot(1,3,1)
+				plt.imshow(img_transverse, cmap='bone')
+				plt.title('Transverse view')
+				plt.subplot(1,3,2)
+				plt.imshow(img_sagittal, cmap='bone')
+				plt.title('Sagittal view')
+				plt.subplot(1,3,3)
+				plt.imshow(img_coronal, cmap='bone')
+				plt.title('Coronal view')
+				plt.show()
 
 
-			sys.exit()
 
+
+
+
+
+				if SAVE_IMG:
+					imsave(DATA_DIR + "class_{}_id_{}_xyz_{}_{}_{}.png".format(
+							class_id,
+							seriesuid,
+							candidate_x,
+							candidate_y,
+							candidate_z), img_transverse)
+
+
+				sys.exit()
+
+		HDF5_DATA.close()
 
 if __name__ == '__main__':
 	main()
 
-############
-#
-# Getting list of image files
-# output_path = "./patches/"
-# train_path = output_path + "train/"
-# validation_path = output_path + "validation/"
-#
-#
-# # Create the output directories if they don't exist
-# pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
-# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
-# pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
-# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
+	############
+	#
+	# Getting list of image files
+	# output_path = "./patches/"
+	# train_path = output_path + "train/"
+	# validation_path = output_path + "validation/"
+	#
+	#
+	# # Create the output directories if they don't exist
+	# pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
+	# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
+	# pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
+	# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
 
 
-			# Save the transverse patch to file
+				# Save the transverse patch to file
 
-			# Flip a coin to determine if this should be placed
-			# in the training or validation dataset. (70/30 split)
-			# if (np.random.random_sample() < 0.3):
-			# 	path_name = validation_path
-			# else:
-			# 	path_name = train_path
-            #
-			# imsave(path_name
-			# 	+ "class_{}/".format(class_id)
-			# 	+ seriesuid
-			# 	+ "_{}_{}_{}.png".format(candidate_x, candidate_y, candidate_z),
-			# 	img_transverse)
+				# Flip a coin to determine if this should be placed
+				# in the training or validation dataset. (70/30 split)
+				# if (np.random.random_sample() < 0.3):
+				# 	path_name = validation_path
+				# else:
+				# 	path_name = train_path
+				#
+				# imsave(path_name
+				# 	+ "class_{}/".format(class_id)
+				# 	+ seriesuid
+				# 	+ "_{}_{}_{}.png".format(candidate_x, candidate_y, candidate_z),
+				# 	img_transverse)
+
+# read hdf5 test script:
+# filename = '/Users/keil/datasets/LUNA16/64dim_patches.hdf5'
+# f = h5py.File(filename, 'r')
+#
+# # List all groups
+# # print("Keys: %s" % f.keys())
+# # a_group_key = list(f.keys())[0]
+#
+# # # Get the data
+# # data = list(f[a_group_key])
+#
+#
+# with h5py.File('/Users/keil/datasets/LUNA16/64dim_patches.hdf5', 'r') as infile:
+# #     dataset = infile['my data']
+#     some_data = f.key['0patch'] # Load it into memory. Could also slice a subset.
+#
+#     print(dataset.attrs['class_id'])
+#     print(dataset.attrs['seriesuid'])
