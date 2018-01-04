@@ -38,14 +38,16 @@ requiredNamed.add_argument('-data', action="store", dest="data", type=str, requi
 requiredNamed.add_argument('-subset', action="store", dest="subset",
 						type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
 						required=True, help='list subset number(s) e.g. 0,1,2')
+requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, required=True,
+						help='Luna CSV dir name e.g. luna-csvs/')
 args = parser.parse_args()
-print(type(args))
 
 
 #### ---- Global Vars ---- ####
 PATCH_DIM = args.dim
 DATA_DIR = args.data
 SUBSET = args.subset
+CSV_PATH = args.csv
 SAVE_IMG = args.img
 TENSOR = args.tensor
 TENSOR_DIM = args.slices
@@ -54,7 +56,7 @@ FILE_LIST = []
 for unique_set in SUBSET:
 	FILE_LIST.extend(glob("{}{}/*.mhd".format(DATA_DIR, unique_set))) #add subset of .mhd files
 	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
-DF_NODE = pd.read_csv(DATA_DIR + "csv-files/candidates_with_annotations.csv")
+DF_NODE = pd.read_csv(DATA_DIR + CSV_PATH + "candidates_with_annotations.csv")
 	# DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
 
 
@@ -233,12 +235,12 @@ def main():
 					img_transverse = img_array[bbox[2][0]:bbox[2][1],
 	                        bbox[0][0]:bbox[0][1],
 	                        bbox[1][0]:bbox[1][1]]
-					print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
+					# print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
 				else:
 					img_transverse = img_array[voxel_center[2],
 						bbox[0][0]:bbox[0][1],
 						bbox[1][0]:bbox[1][1]]
-					print(img_transverse.shape) #(64,64)
+					# print(img_transverse.shape) #(64,64)
 
 				# sys.exit()
 
@@ -253,6 +255,7 @@ def main():
 							candidate_z), img_transverse)
 
 				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
+				# TODO: fix patch clipping for 2d & 3d
 				img_transverse = normalizePlanes(img_transverse) #normalize HU units
 				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
 				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
@@ -280,7 +283,7 @@ if __name__ == '__main__':
 	# train_path = output_path + "train/"
 	# validation_path = output_path + "validation/"
 	#
-	#
+	# NEED to ADD BACK DIR CHECKING
 	# # Create the output directories if they don't exist
 	# pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
 	# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
