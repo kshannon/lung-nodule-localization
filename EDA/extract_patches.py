@@ -1,26 +1,26 @@
 #! /usr/bin/env python
 
-# Thanks to Jonathan Mulholland and Aaron Sander from Booz Allen Hamilton
-# who made this code public as a part of the Kaggle Data Science Bowl 2017 contest.
+# Thanks to Jonathan Mulholland and Aaron Sander from Booz Allen Hamilton who
+# made their code publically availble, parts of which we are using in this script.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
+#### ---- Imports & Dependencies ---- ####
 import sys
 import os
 import argparse
 import pathlib
 from glob import glob
 from random import shuffle
-
 import SimpleITK as sitk   # pip install SimpleITK
 from tqdm import tqdm    # pip install tqdm
 import h5py
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.misc import imsave # might need: conda install Pillow
+from scipy.misc import imsave # might require: conda install Pillow
 
-# argparse utility for specifying dim size, to save pngs, and the data dir
+
+#### ---- Argparse Utility ---- ####
 parser = argparse.ArgumentParser(description='Specify patch dimmensions,\
 								data dir e.g. /home/data/,\
 								the LUNA subset num,\
@@ -32,22 +32,20 @@ parser.add_argument('-subset', action="store", dest="subset", type=str, required
 parser.add_argument('-img', action="store_true", dest="img", default=False)
 args = parser.parse_args()
 
+
+#### ---- Global Vars ---- ####
 PATCH_DIM = args.dim
 DATA_DIR = args.data
 SUBSET = args.subset
 SAVE_IMG = args.img
 MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
-
-# setting script paths
-FILE_LIST = glob("{}{}/*.mhd".format(DATA_DIR, SUBSET))
-# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
-HDF5_DATA = h5py.File(DATA_DIR + str(PATCH_DIM) + 'dim_patches.hdf5') #create dataset obj
-
-# retrieving node locations
+FILE_LIST = glob("{}{}/*.mhd".format(DATA_DIR, SUBSET)) #list of .mhd files
+	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
 DF_NODE = pd.read_csv(DATA_DIR + "csv-files/candidates_with_annotations.csv")
-#DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
+	# DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
 
-# Helper Functions
+
+#### ---- Helper Functions ---- ####
 def normalizePlanes(npzarray):
 	"""
 	Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
@@ -57,8 +55,8 @@ def normalizePlanes(npzarray):
 	npzarray = (npzarray - minHU) / (maxHU - minHU)
 	npzarray[npzarray>1] = 1.
 	npzarray[npzarray<0] = 0.
-
 	return npzarray
+
 
 def normalize_img(img):
 	"""
@@ -72,10 +70,8 @@ def normalize_img(img):
 	new_size = [new_x_size, new_y_size, new_z_size]
 
 	# new_spacing = [old_sz*old_spc/new_sz  for old_sz, old_spc, new_sz in zip(img.GetSize(), img.GetSpacing(), new_size)]
-
 	new_spacing = [1,1,1]  # New spacing to be 1.0 x 1.0 x 1.0 mm voxel size
 	interpolator_type = sitk.sitkLinear
-
 	return sitk.Resample(img, np.array(new_size, dtype='uint32').tolist(),
 							sitk.Transform(),
 							interpolator_type,
@@ -116,22 +112,12 @@ def make_mask(center,diam,z,width,height,depth,spacing,origin,
 	x_data = [x*spacing[0]+origin[0] for x in range(width)]
 	y_data = [x*spacing[1]+origin[1] for x in range(height)]
 
-	# SPHERICAL MASK
-	# Fill in 1 within sphere around nodule
-	#     for v_x in v_xrange:
-	#         for v_y in v_yrange:
-	#             p_x = spacing[0]*v_x + origin[0]
-	#             p_y = spacing[1]*v_y + origin[1]
-	#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
-	#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0
 
 	# RECTANGULAR MASK
 	for v_x in v_xrange:
 		for v_y in v_yrange:
-
 			p_x = spacing[0]*v_x + origin[0]
 			p_y = spacing[1]*v_y + origin[1]
-
 			if ((p_x >= (center[0] - mask_width)) &
 				(p_x <= (center[0] + mask_width)) &
 				(p_y >= (center[1] - mask_height)) &
@@ -154,28 +140,23 @@ def make_mask(center,diam,z,width,height,depth,spacing,origin,
 
 	bbox = [[down, up], [left, right], [bottom, top]]
 
+	print(type(bbox))
+	print(bbox)
+
 	return mask, bbox
-
-
-# def hdf5_writer(data,class_id,uuid,patch_dim):
-# 	"""
-# 	open hdf5, write data yield, when nothing else to write close hd5f and return
-# 	"""
-# 	f = h5py.File(DATA_DIR + 'test.hdf5', 'w') #4096
-# 	dataset = f.create_dataset('')
-#
-# 				# print(np.ravel(img_transverse, order='C').shape)
-# 				# print(np.ravel(img_sagittal, order='C').shape)
-# 				# print(np.ravel(img_coronal, order='C').shape)
-#
-# 				# re_tst = np.reshape(img_transverse, (PATCH_DIM,PATCH_DIM), order='C')
-# 	pass
-
 
 
 def main():
 
-		for fcount, img_file in enumerate(tqdm(FILE_LIST)):
+	with h5py.File(DATA_DIR + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
+		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
+		img_dset.attrs['patch_size'] = PATCH_DIM
+		img_dset.attrs['plane'] = 'transverse'
+		class_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
+		class_dset.attrs['classes'] = '2'
+		print("Created HDF5 File and Datasets")
+
+		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
 
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
@@ -183,9 +164,8 @@ def main():
 
 			"""
 			Extracts 2D patches from the 3 planes (transverse, coronal, and sagittal).
-
-			The sticky point here is the order of the axes. Numpy is z,y,x and SimpleITK is x,y,z.
-			I"ve found it very difficult to keep the order correct when going back and forth,
+			The sticking point here is the order of the axes. Numpy is z,y,x and SimpleITK is x,y,z.
+			I've found it very difficult to keep the order correct when going back and forth,
 			but this code seems to pass the sanity checks.
 			"""
 			# Load the CT scan (3D .mhd file)
@@ -196,9 +176,15 @@ def main():
 
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
+
+
 			slice_z, height, width = img_array.shape
+			print(slice_z, height, width)
+
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
+			print(origin, spacing)
+
 
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 
@@ -224,70 +210,57 @@ def main():
 									   width, height, slice_z, spacing, origin,
 									   mask_width, mask_height, mask_depth)
 
-				# Transverse slice 2D view - Y-X plane
+				sys.exit()
 				# a numpy array size of DIM x DIM
 				# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
+				# Transverse slice 2D view - Y-X plane
 				img_transverse = normalizePlanes(img_array[voxel_center[2],
 					bbox[0][0]:bbox[0][1],
 					bbox[1][0]:bbox[1][1]])
 
 				# Sagittal slice 2D view - Z-Y plane
-				img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-					bbox[0][0]:bbox[0][1],
-					voxel_center[0]])
+				# img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+				# 	bbox[0][0]:bbox[0][1],
+				# 	voxel_center[0]])
 
 				# Coronal slice 2D view - Z-X plane
-				img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-					voxel_center[1],
-					bbox[1][0]:bbox[1][1]])
+				# img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+				# 	voxel_center[1],
+				# 	bbox[1][0]:bbox[1][1]])
 
-
-
-				data_pack = [img_transverse, img_sagittal, img_coronal]
-				# Send patches and meta-data to hdf5-writer method
-				# hdf5_writer(outfile,data_pack,class_id,seriesuid,PATCH_DIM)
-				for idx, img in enumerate(data_pack):
-					# img = np.flatten(img, order='C') #or ravel, but makes shallow copy
-					dataset = HDF5_DATA.create_dataset(str(idx) + 'patch', data=np.ravel(img, order='C')) #,+seriesuid
-					dataset.attrs['seriesuid'] = seriesuid
-					dataset.attrs['class_id'] = class_id
-					# dataset.attrs[]
-
-				print(img_file)
-				print("Class = {}".format(class_id))
-				plt.figure(figsize=(15,15))
-				plt.subplot(1,3,1)
-				plt.imshow(img_transverse, cmap='bone')
-				plt.title('Transverse view')
-				plt.subplot(1,3,2)
-				plt.imshow(img_sagittal, cmap='bone')
-				plt.title('Sagittal view')
-				plt.subplot(1,3,3)
-				plt.imshow(img_coronal, cmap='bone')
-				plt.title('Coronal view')
-				plt.show()
-
-
-
-
-
-
-
+				# If -img argument passed will save the patch as a .png
 				if SAVE_IMG:
-					imsave(DATA_DIR + "class_{}_id_{}_xyz_{}_{}_{}.png".format(
+					imsave(DATA_DIR + "sample_patches/class_{}_uid_{}_xyz_{}_{}_{}.png".format(
 							class_id,
 							seriesuid,
 							candidate_x,
 							candidate_y,
 							candidate_z), img_transverse)
 
+				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
+				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
+				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
+					continue
+				if img_count == 0:
+					img_dset[:] = img_transverse
+					class_dset[:] = class_id
+				else:
+					row = img_dset.shape[0] # How many rows in the dataset currently?
+					img_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
+					img_dset[row, :] = img_transverse
 
-				sys.exit()
+					row = class_dset.shape[0] # How many rows in the dataset currently?
+					class_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
+					class_dset[row, :] = int(class_id)
 
-		HDF5_DATA.close()
 
 if __name__ == '__main__':
 	main()
+
+
+
+
+
 
 	############
 	#
@@ -337,3 +310,12 @@ if __name__ == '__main__':
 #
 #     print(dataset.attrs['class_id'])
 #     print(dataset.attrs['seriesuid'])
+
+	# SPHERICAL MASK
+	# Fill in 1 within sphere around nodule
+	#     for v_x in v_xrange:
+	#         for v_y in v_yrange:
+	#             p_x = spacing[0]*v_x + origin[0]
+	#             p_y = spacing[1]*v_y + origin[1]
+	#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
+	#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0
