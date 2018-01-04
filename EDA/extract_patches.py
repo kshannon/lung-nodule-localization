@@ -30,6 +30,7 @@ parser.add_argument('-dim', action="store", dest="dim", type=int, required=True)
 parser.add_argument('-data', action="store", dest="data", type=str, required=True)
 parser.add_argument('-subset', action="store", dest="subset", type=str, required=True)
 parser.add_argument('-img', action="store_true", dest="img", default=False)
+parser.add_argument('-tensor', action="store_true", dest="tensor", default=False)
 args = parser.parse_args()
 
 
@@ -38,6 +39,7 @@ PATCH_DIM = args.dim
 DATA_DIR = args.data
 SUBSET = args.subset
 SAVE_IMG = args.img
+TENSOR = args.tensor
 MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
 FILE_LIST = glob("{}{}/*.mhd".format(DATA_DIR, SUBSET)) #list of .mhd files
 	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
@@ -179,12 +181,8 @@ def main():
 
 
 			slice_z, height, width = img_array.shape
-			print(slice_z, height, width)
-
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
-			print(origin, spacing)
-
 
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 
@@ -200,7 +198,7 @@ def main():
 
 				mask_width = 32 # This is really the half width so window will be double this width
 				mask_height = 32 # This is really the half height so window will be double this height
-				mask_depth = 32 # This is really the half depth so window will be double this depth
+				mask_depth = 2 # This is really the half depth so window will be double this depth
 
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
 				voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
@@ -210,23 +208,27 @@ def main():
 									   width, height, slice_z, spacing, origin,
 									   mask_width, mask_height, mask_depth)
 
-				sys.exit()
 				# a numpy array size of DIM x DIM
 				# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
 				# Transverse slice 2D view - Y-X plane
-				img_transverse = normalizePlanes(img_array[voxel_center[2],
-					bbox[0][0]:bbox[0][1],
-					bbox[1][0]:bbox[1][1]])
+				# img = img_array[bbox[2][0]:bbox[2][1],
+				# 		bbox[0][0]:bbox[0][1],
+				# 		bbox[1][0]:bbox[1][1]]
+				# print(img.shape)
 
-				# Sagittal slice 2D view - Z-Y plane
-				# img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-				# 	bbox[0][0]:bbox[0][1],
-				# 	voxel_center[0]])
+				if TENSOR:
+					img_transverse = img_array[bbox[2][0]:bbox[2][1],
+	                        bbox[0][0]:bbox[0][1],
+	                        bbox[1][0]:bbox[1][1]]
+					print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
+				else:
+					img_transverse = img_array[voxel_center[2],
+						bbox[0][0]:bbox[0][1],
+						bbox[1][0]:bbox[1][1]]
+					print(img_transverse.shape) #(64,64)
 
-				# Coronal slice 2D view - Z-X plane
-				# img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-				# 	voxel_center[1],
-				# 	bbox[1][0]:bbox[1][1]])
+				# sys.exit()
+
 
 				# If -img argument passed will save the patch as a .png
 				if SAVE_IMG:
@@ -238,6 +240,7 @@ def main():
 							candidate_z), img_transverse)
 
 				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
+				img_transverse = normalizePlanes(img_transverse) #normalize HU units
 				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
 				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
 					continue
@@ -257,11 +260,6 @@ def main():
 if __name__ == '__main__':
 	main()
 
-
-
-
-
-
 	############
 	#
 	# Getting list of image files
@@ -277,45 +275,23 @@ if __name__ == '__main__':
 	# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
 
 
-				# Save the transverse patch to file
+#### ---- Optional Side Quests ---- ####
 
-				# Flip a coin to determine if this should be placed
-				# in the training or validation dataset. (70/30 split)
-				# if (np.random.random_sample() < 0.3):
-				# 	path_name = validation_path
-				# else:
-				# 	path_name = train_path
-				#
-				# imsave(path_name
-				# 	+ "class_{}/".format(class_id)
-				# 	+ seriesuid
-				# 	+ "_{}_{}_{}.png".format(candidate_x, candidate_y, candidate_z),
-				# 	img_transverse)
+# Sagittal slice 2D view - Z-Y plane
+# img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+# 	bbox[0][0]:bbox[0][1],
+# 	voxel_center[0]])
 
-# read hdf5 test script:
-# filename = '/Users/keil/datasets/LUNA16/64dim_patches.hdf5'
-# f = h5py.File(filename, 'r')
-#
-# # List all groups
-# # print("Keys: %s" % f.keys())
-# # a_group_key = list(f.keys())[0]
-#
-# # # Get the data
-# # data = list(f[a_group_key])
-#
-#
-# with h5py.File('/Users/keil/datasets/LUNA16/64dim_patches.hdf5', 'r') as infile:
-# #     dataset = infile['my data']
-#     some_data = f.key['0patch'] # Load it into memory. Could also slice a subset.
-#
-#     print(dataset.attrs['class_id'])
-#     print(dataset.attrs['seriesuid'])
+# Coronal slice 2D view - Z-X plane
+# img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
+# 	voxel_center[1],
+# 	bbox[1][0]:bbox[1][1]])
 
-	# SPHERICAL MASK
-	# Fill in 1 within sphere around nodule
-	#     for v_x in v_xrange:
-	#         for v_y in v_yrange:
-	#             p_x = spacing[0]*v_x + origin[0]
-	#             p_y = spacing[1]*v_y + origin[1]
-	#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
-	#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0
+# SPHERICAL MASK
+# Fill in 1 within sphere around nodule
+#     for v_x in v_xrange:
+#         for v_y in v_yrange:
+#             p_x = spacing[0]*v_x + origin[0]
+#             p_y = spacing[1]*v_y + origin[1]
+#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
+#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0
