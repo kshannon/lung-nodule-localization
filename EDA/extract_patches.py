@@ -21,17 +21,25 @@ from scipy.misc import imsave # might require: conda install Pillow
 
 
 #### ---- Argparse Utility ---- ####
-parser = argparse.ArgumentParser(description='Specify patch dimmensions,\
-								data dir e.g. /home/data/,\
-								the LUNA subset num,\
-								and T/F to save pngs',
+parser = argparse.ArgumentParser(description='Requires path to Luna16 and subset(s),\
+									option to use 3d tensors',
 								add_help=True)
-parser.add_argument('-dim', action="store", dest="dim", type=int, required=True)
-parser.add_argument('-data', action="store", dest="data", type=str, required=True)
-parser.add_argument('-subset', action="store", dest="subset", type=str, required=True)
-parser.add_argument('-img', action="store_true", dest="img", default=False)
-parser.add_argument('-tensor', action="store_true", dest="tensor", default=False)
+parser.add_argument('-img', action="store_true", dest="img", default=False,
+						help='Flag to save imgs to patches/*.png')
+parser.add_argument('-tensor', action="store_true", dest="tensor", default=False,
+						help='Flag to create 3d tensor objects')
+parser.add_argument('-slices', type=int,action="store", dest="slices",
+						help='Num of tensor slices')
+requiredNamed = parser.add_argument_group('required named arguments')
+requiredNamed.add_argument('-dim', action="store", dest="dim", type=int, required=True,
+						help='Dimmension of the patch e.g. 64 or 32')
+requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
+						help='Dir to data e.g. ~/kyle/data/luna16/')
+requiredNamed.add_argument('-subset', action="store", dest="subset",
+						type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
+						required=True, help='list subset number(s) e.g. 0,1,2')
 args = parser.parse_args()
+print(type(args))
 
 
 #### ---- Global Vars ---- ####
@@ -40,8 +48,11 @@ DATA_DIR = args.data
 SUBSET = args.subset
 SAVE_IMG = args.img
 TENSOR = args.tensor
+TENSOR_DIM = args.slices
 MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
-FILE_LIST = glob("{}{}/*.mhd".format(DATA_DIR, SUBSET)) #list of .mhd files
+FILE_LIST = []
+for unique_set in SUBSET:
+	FILE_LIST.extend(glob("{}{}/*.mhd".format(DATA_DIR, unique_set))) #add subset of .mhd files
 	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
 DF_NODE = pd.read_csv(DATA_DIR + "csv-files/candidates_with_annotations.csv")
 	# DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
@@ -141,9 +152,9 @@ def make_mask(center,diam,z,width,height,depth,spacing,origin,
 	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
 
 	bbox = [[down, up], [left, right], [bottom, top]]
-
-	print(type(bbox))
-	print(bbox)
+    #
+	# print(type(bbox))
+	# print(bbox)
 
 	return mask, bbox
 
@@ -158,6 +169,7 @@ def main():
 		class_dset.attrs['classes'] = '2'
 		print("Created HDF5 File and Datasets")
 
+		####### The CT Scan Level #######
 		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
 
 			base=os.path.basename(img_file)  # Strip the filename out
@@ -184,6 +196,7 @@ def main():
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
+			####### The Slice Level #######
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
@@ -198,7 +211,7 @@ def main():
 
 				mask_width = 32 # This is really the half width so window will be double this width
 				mask_height = 32 # This is really the half height so window will be double this height
-				mask_depth = 2 # This is really the half depth so window will be double this depth
+				mask_depth = 32 # This is really the half depth so window will be double this depth
 
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
 				voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
