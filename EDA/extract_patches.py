@@ -99,14 +99,7 @@ def normalize_img(img):
 
 def make_mask(center,diam,z,width,height,depth,spacing,origin,
 			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
-	"""
-	Center : centers of circles px -- list of coordinates x,y,z
-	diam : diameters of circles px -- diameter
-	z = z position of slice in world coordinates mm
-	width X height : pixel dim of image
-	spacing = mm/px conversion rate np array x,y,z
-	origin = x,y,z mm np.array
-	"""
+
 	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
 	#convert to nodule space from world coordinates
 
