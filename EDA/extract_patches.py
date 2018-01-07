@@ -21,6 +21,7 @@ from scipy.misc import imsave # might require: conda install Pillow
 
 
 #### ---- Argparse Utility ---- ####
+# TODO - change argparse utility (move some of it to config file)
 parser = argparse.ArgumentParser(description='Requires path to Luna16 and subset(s),\
 									option to use 3d tensors',
 								add_help=True)
@@ -43,6 +44,10 @@ requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, require
 args = parser.parse_args()
 
 
+#### ---- Config File Utility ---- ####
+#TODO
+
+
 #### ---- Global Vars ---- ####
 PATCH_DIM = args.dim
 DATA_DIR = args.data
@@ -61,6 +66,7 @@ DF_NODE = pd.read_csv(DATA_DIR + CSV_PATH + "candidates_with_annotations.csv")
 
 
 #### ---- Helper Functions ---- ####
+
 def normalizePlanes(npzarray):
 	"""
 	Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
@@ -96,14 +102,14 @@ def normalize_img(img):
 							0.0,
 							img.GetPixelIDValue())
 
-
+#TODO Remove make mask
 def make_mask(center,diam,z,width,height,depth,spacing,origin,
 			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
 	"""
-	Center : centers of circles px -- list of coordinates x,y,z
+	Center : centers of circles px -- list of coords x,y,z
 	diam : diameters of circles px -- diameter
-	z = z position of slice in world coordinates mm
-	width X height : pixel dim of image
+	z = z pos of slice in world coords mm
+	width X height : pxl dim of image
 	spacing = mm/px conversion rate np array x,y,z
 	origin = x,y,z mm np.array
 	"""
