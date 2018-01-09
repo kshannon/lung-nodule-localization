@@ -21,14 +21,6 @@ import matplotlib.pyplot as plt
 from scipy.misc import imsave # might require: conda install Pillow
 
 
-#### ---- ConfigParse Utility ---- ####
-# config = ConfigParser()
-# config.read('extract_patches_config.ini')
-#
-# DATA_DIR = config.get('local', 'data')
-# CSV_PATH = config.get('local', 'csv')
-# IMG_PATH = config.get('local', 'img')
-
 #### ---- Argparse Utility ---- ####
 # TODO - change argparse utility (move some of it to config file)
 parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
@@ -40,6 +32,10 @@ parser.add_argument('-slices', type=int, action="store", dest="slices",
 						default=1, help='Num of tensor slices > 0, default = 1')
 parser.add_argument('-dim', action="store", dest="dim", type=int, default=64,
 						help='Dimmension of the patch, default = 64')
+parser.add_argument('-remote', action="store_true", dest="remote", default=False,
+						help='Use if running script remote e.g. AWS')
+
+
 requiredNamed = parser.add_argument_group('required named arguments')
 
 # requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
@@ -52,15 +48,38 @@ requiredNamed.add_argument('-subset', action="store", dest="subset",
 args = parser.parse_args()
 
 
+#### ---- ConfigParse Utility ---- ####
+config = ConfigParser()
+config.read('extract_patches_config.ini') #local just for now
+
+# if args.remote:
+	# do something in AWS
+# else:
+	# work locally
+	# config.read('extract_patches_config.ini')
+
+# Example .ini file:
+	# [local]
+	# LUNA_PATH = /Users/keil/datasets/LUNA16/
+	# CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
+	# IMG_PATH = /Users/keil/datasets/LUNA16/patches/
+	# [remote]
+	# # - when we move to AWS
+
+
 #### ---- Global Vars ---- ####
+LUNA_PATH = config.get('local', 'LUNA_PATH')
+CSV_PATH = config.get('local', 'CSV_PATH')
+IMG_PATH = config.get('local', 'IMG_PATH')
 PATCH_DIM = args.dim
-DATA_DIR = args.data
+# DATA_DIR = args.data
 SUBSET = args.subset
-CSV_PATH = args.csv
+# CSV_PATH = args.csv
 SAVE_IMG = args.img
-TENSOR = args.tensor
-TENSOR_DIM = args.slices
-MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
+# TENSOR = args.tensor
+NUM_SLICES = args.slices
+# WORK_REMOTE = args.remote
+# MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
 FILE_LIST = []
 for unique_set in SUBSET:
 	FILE_LIST.extend(glob("{}{}/*.mhd".format(DATA_DIR, unique_set))) #add subset of .mhd files
