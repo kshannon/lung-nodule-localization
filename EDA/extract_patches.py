@@ -22,29 +22,19 @@ from scipy.misc import imsave # might require: conda install Pillow
 
 
 #### ---- Argparse Utility ---- ####
-# TODO - change argparse utility (move some of it to config file)
 parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
 parser.add_argument('-img', action="store_true", dest="img", default=False,
 						help='Save .png patches to ./patches/')
-# parser.add_argument('-tensor', action="store_true", dest="tensor", default=False,
-# 						help='Flag to create 3d tensor objects')
 parser.add_argument('-slices', type=int, action="store", dest="slices",
 						default=1, help='Num of tensor slices > 0, default = 1')
 parser.add_argument('-dim', action="store", dest="dim", type=int, default=64,
 						help='Dimmension of the patch, default = 64')
 parser.add_argument('-remote', action="store_true", dest="remote", default=False,
 						help='Use if running script remote e.g. AWS')
-
-
 requiredNamed = parser.add_argument_group('required named arguments')
-
-# requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
-# 						help='Dir to data e.g. ~/kyle/data/luna16/')
 requiredNamed.add_argument('-subset', action="store", dest="subset",
 						type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
 						required=True, help='subset dir name or number(s) e.g. 0,1,2')
-# requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, required=True,
-# 						help='Luna CSV dir name e.g. luna-csvs/')
 args = parser.parse_args()
 
 
@@ -58,7 +48,7 @@ config.read('extract_patches_config.ini') #local just for now
 	# work locally
 	# config.read('extract_patches_config.ini')
 
-# Example .ini file:
+# Example extract_patches_config.ini file:
 	# [local]
 	# LUNA_PATH = /Users/keil/datasets/LUNA16/
 	# CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
@@ -72,20 +62,15 @@ LUNA_PATH = config.get('local', 'LUNA_PATH')
 CSV_PATH = config.get('local', 'CSV_PATH')
 IMG_PATH = config.get('local', 'IMG_PATH')
 PATCH_DIM = args.dim
-# DATA_DIR = args.data
 SUBSET = args.subset
-# CSV_PATH = args.csv
 SAVE_IMG = args.img
-# TENSOR = args.tensor
 NUM_SLICES = args.slices
-# WORK_REMOTE = args.remote
+# WORK_REMOTE = args.remote #add later w/ AWS
 # MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
+DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
 for unique_set in SUBSET:
-	FILE_LIST.extend(glob("{}{}/*.mhd".format(DATA_DIR, unique_set))) #add subset of .mhd files
-	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
-DF_NODE = pd.read_csv(DATA_DIR + CSV_PATH + "candidates_with_annotations.csv")
-	# DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
+	FILE_LIST.extend(glob("{}{}/*.mhd".format(LUNA_PATH, unique_set))) #add subset of .mhd files
 
 
 #### ---- Helper Functions ---- ####
@@ -185,12 +170,14 @@ def normalize_img(img):
 
 def main():
 
-	with h5py.File(DATA_DIR + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
+	#TODO add the metadata info to hdf5 class dataset to include seriesUID etc as discussed w/ tony
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
 		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
 		img_dset.attrs['patch_size'] = PATCH_DIM
 		img_dset.attrs['plane'] = 'transverse'
 		class_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
 		class_dset.attrs['classes'] = '2'
+		meta_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
 		print("Created HDF5 File and Datasets")
 
 		####### The CT Scan Level #######
@@ -269,7 +256,7 @@ def main():
 
 				# If -img argument passed will save the patch as a .png
 				if SAVE_IMG:
-					imsave(DATA_DIR + "sample_patches/class_{}_uid_{}_xyz_{}_{}_{}.png".format(
+					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
 							class_id,
 							seriesuid,
 							candidate_x,
@@ -277,7 +264,7 @@ def main():
 							candidate_z), img_transverse)
 
 				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
-				# TODO: fix patch clipping for 2d & 3d
+				# TODO: fix patch clipping for 3d
 				img_transverse = normalizePlanes(img_transverse) #normalize HU units
 				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
 				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
@@ -311,25 +298,3 @@ if __name__ == '__main__':
 	# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
 	# pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
 	# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
-
-
-#### ---- Optional Side Quests ---- ####
-
-# Sagittal slice 2D view - Z-Y plane
-# img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-# 	bbox[0][0]:bbox[0][1],
-# 	voxel_center[0]])
-
-# Coronal slice 2D view - Z-X plane
-# img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-# 	voxel_center[1],
-# 	bbox[1][0]:bbox[1][1]])
-
-# SPHERICAL MASK
-# Fill in 1 within sphere around nodule
-#     for v_x in v_xrange:
-#         for v_y in v_yrange:
-#             p_x = spacing[0]*v_x + origin[0]
-#             p_y = spacing[1]*v_y + origin[1]
-#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
-#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0
