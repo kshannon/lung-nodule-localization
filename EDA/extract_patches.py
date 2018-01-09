@@ -17,7 +17,7 @@ from tqdm import tqdm    # pip install tqdm
 import h5py
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from scipy.misc import imsave # might require: conda install Pillow
 
 
@@ -40,13 +40,7 @@ args = parser.parse_args()
 
 #### ---- ConfigParse Utility ---- ####
 config = ConfigParser()
-config.read('extract_patches_config.ini') #local just for now
-
-# if args.remote:
-	# do something in AWS
-# else:
-	# work locally
-	# config.read('extract_patches_config.ini')
+config.read('extract_patches_config.ini') #local just for now (need if - else for AWS)
 
 # Example extract_patches_config.ini file:
 	# [local]
@@ -66,7 +60,7 @@ SUBSET = args.subset
 SAVE_IMG = args.img
 NUM_SLICES = args.slices
 # WORK_REMOTE = args.remote #add later w/ AWS
-# MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
+MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
 DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
 for unique_set in SUBSET:
@@ -111,74 +105,73 @@ def normalize_img(img):
 							img.GetPixelIDValue())
 
 #TODO Remove make mask
-# def make_mask(center,diam,z,width,height,depth,spacing,origin,
-# 			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
-#
-# 	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
-# 	#convert to nodule space from world coordinates
-#
-# 	padMask = 5
-#
-# 	# Defining the voxel range in which the nodule falls
-# 	v_center = (center-origin)/spacing
-# 	v_diam = int(diam/spacing[0]+padMask)
-# 	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
-# 	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
-# 	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
-# 	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
-#
-# 	v_xrange = range(v_xmin,v_xmax+1)
-# 	v_yrange = range(v_ymin,v_ymax+1)
-#
-# 	# Convert back to world coordinates for distance calculation
-# 	x_data = [x*spacing[0]+origin[0] for x in range(width)]
-# 	y_data = [x*spacing[1]+origin[1] for x in range(height)]
-#
-#
-# 	# RECTANGULAR MASK
-# 	for v_x in v_xrange:
-# 		for v_y in v_yrange:
-# 			p_x = spacing[0]*v_x + origin[0]
-# 			p_y = spacing[1]*v_y + origin[1]
-# 			if ((p_x >= (center[0] - mask_width)) &
-# 				(p_x <= (center[0] + mask_width)) &
-# 				(p_y >= (center[1] - mask_height)) &
-# 				(p_y <= (center[1] + mask_height))):
-#
-# 				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
-# 					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
-#
-#
-# 	# TODO:  The height and width seemed to be switched.
-# 	# This works but needs to be simplified. It"s probably due to SimpleITK
-# 	# versus Numpy transposed indicies.
-# 	left = np.max([0, np.abs(center[0] - origin[0]) - mask_width]).astype(int)
-# 	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
-# 	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
-# 	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
-#
-# 	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
-# 	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
-#
-# 	bbox = [[down, up], [left, right], [bottom, top]]
-#     #
-# 	# print(type(bbox))
-# 	# print(bbox)
-#
-# 	return mask, bbox
+def make_mask(center,diam,z,width,height,depth,spacing,origin,
+			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
+
+	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
+	#convert to nodule space from world coordinates
+
+	padMask = 5
+
+	# Defining the voxel range in which the nodule falls
+	v_center = (center-origin)/spacing
+	v_diam = int(diam/spacing[0]+padMask)
+	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
+	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
+	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
+	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
+
+	v_xrange = range(v_xmin,v_xmax+1)
+	v_yrange = range(v_ymin,v_ymax+1)
+
+	# Convert back to world coordinates for distance calculation
+	x_data = [x*spacing[0]+origin[0] for x in range(width)]
+	y_data = [x*spacing[1]+origin[1] for x in range(height)]
+
+
+	# RECTANGULAR MASK
+	for v_x in v_xrange:
+		for v_y in v_yrange:
+			p_x = spacing[0]*v_x + origin[0]
+			p_y = spacing[1]*v_y + origin[1]
+			if ((p_x >= (center[0] - mask_width)) &
+				(p_x <= (center[0] + mask_width)) &
+				(p_y >= (center[1] - mask_height)) &
+				(p_y <= (center[1] + mask_height))):
+
+				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
+					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
+
+
+	# TODO:  The height and width seemed to be switched.
+	# This works but needs to be simplified. It"s probably due to SimpleITK
+	# versus Numpy transposed indicies.
+	left = np.max([0, np.abs(center[0] - origin[0]) - mask_width]).astype(int)
+	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
+	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
+	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
+
+	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
+	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
+
+	bbox = [[down, up], [left, right], [bottom, top]]
+    #
+	# print(type(bbox))
+	# print(bbox)
+
+	return mask, bbox
 
 
 def main():
-
-	#TODO add the metadata info to hdf5 class dataset to include seriesUID etc as discussed w/ tony
-	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
+		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
-		img_dset.attrs['patch_size'] = PATCH_DIM
-		img_dset.attrs['plane'] = 'transverse'
-		class_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
-		class_dset.attrs['classes'] = '2'
-		meta_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
-		print("Created HDF5 File and Datasets")
+		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
+		# set up dataset for seriesuid
+		datatype = h5py.special_dtype(vlen=bytes)
+		uuid_dset = HDF5.create_dataset('uuid', (1,150), maxshape=(None,150), dtype=datatype) #old one
+		print("Created HDF5 File and Three Datasets")
+
 
 		####### The CT Scan Level #######
 		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
@@ -209,7 +202,6 @@ def main():
 
 			####### The Slice Level #######
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
-
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				candidate_x = cur_row["coordX"]
 				candidate_y = cur_row["coordY"]
@@ -231,7 +223,6 @@ def main():
 				mask, bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
 									   width, height, slice_z, spacing, origin,
 									   mask_width, mask_height, mask_depth)
-
 				# a numpy array size of DIM x DIM
 				# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
 				# Transverse slice 2D view - Y-X plane
@@ -240,18 +231,17 @@ def main():
 				# 		bbox[1][0]:bbox[1][1]]
 				# print(img.shape)
 
-				if TENSOR:
-					img_transverse = img_array[bbox[2][0]:bbox[2][1],
-	                        bbox[0][0]:bbox[0][1],
-	                        bbox[1][0]:bbox[1][1]]
+				# if TENSOR:
+				# 	img_transverse = img_array[bbox[2][0]:bbox[2][1],
+	            #             bbox[0][0]:bbox[0][1],
+	            #             bbox[1][0]:bbox[1][1]]
 					# print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
-				else:
-					img_transverse = img_array[voxel_center[2],
-						bbox[0][0]:bbox[0][1],
-						bbox[1][0]:bbox[1][1]]
+				# else:
+				img_transverse = img_array[voxel_center[2],
+					bbox[0][0]:bbox[0][1],
+					bbox[1][0]:bbox[1][1]]
 					# print(img_transverse.shape) #(64,64)
 
-				# sys.exit()
 
 
 				# If -img argument passed will save the patch as a .png
@@ -267,34 +257,32 @@ def main():
 				# TODO: fix patch clipping for 3d
 				img_transverse = normalizePlanes(img_transverse) #normalize HU units
 				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
-				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
-					continue
-				if img_count == 0:
+				# if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
+				# 	continue
+
+
+
+				#### ---- Writing Data to HDF5 ---- ####
+				# Flatten class, and x,y,z coords into vector for storage
+				meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+
+				if img_count == 0: # For first patch only
 					img_dset[:] = img_transverse
-					class_dset[:] = class_id
+					class_dset[:] = meta_data
+					uuid_dset[:] = seriesuid
 				else:
-					row = img_dset.shape[0] # How many rows in the dataset currently?
-					img_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
-					img_dset[row, :] = img_transverse
+					row = img_dset.shape[0] # Count current dataset rows
+					img_dset.resize(row+1, axis=0) # Add new row
+					img_dset[row, :] = img_transverse # Insert data into new row
 
-					row = class_dset.shape[0] # How many rows in the dataset currently?
-					class_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
-					class_dset[row, :] = int(class_id)
+					row = class_dset.shape[0]
+					class_dset.resize(row+1, axis=0)
+					class_dset[row, :] = meta_data
 
+					row = uuid_dset.shape[0]
+					class_dset.resize(row+1, axis=0)
+					class_dset[row, :] = seriesuid
+					sys.exit()
 
 if __name__ == '__main__':
 	main()
-
-	############
-	#
-	# Getting list of image files
-	# output_path = "./patches/"
-	# train_path = output_path + "train/"
-	# validation_path = output_path + "validation/"
-	#
-	# NEED to ADD BACK DIR CHECKING
-	# # Create the output directories if they don't exist
-	# pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
