@@ -17,8 +17,7 @@ from tqdm import tqdm    # pip install tqdm
 import h5py
 import pandas as pd
 import numpy as np
-# import matplotlib.pyplot as plt
-from scipy.misc import imsave # might require: conda install Pillow
+from scipy.misc import imsave # might require: conda install Pillow or PIL
 
 
 #### ---- Argparse Utility ---- ####
@@ -168,13 +167,15 @@ def main():
 		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
 		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
 		# set up dataset for seriesuid
-		datatype = h5py.special_dtype(vlen=bytes)
-		uuid_dset = HDF5.create_dataset('uuid', (1,150), maxshape=(None,150), dtype=datatype) #old one
+		# datatype = h5py.special_dtype(vlen=bytes)
+		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes)) #old one
+		# uuid_dset = HDF5.create_dataset('uuid', (1,150), maxshape=(None,150), dtype=datatype) #old one
 		print("Created HDF5 File and Three Datasets")
 
 
-		####### The CT Scan Level #######
+		#### ---- Iterating through a CT scan ---- ####
 		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
+			#TODO remove enumerate and set a Flag for first loop
 
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
@@ -200,7 +201,7 @@ def main():
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
-			####### The Slice Level #######
+			#### ---- Iterating through a CT scan's slices ---- ####
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				candidate_x = cur_row["coordX"]
@@ -242,10 +243,8 @@ def main():
 					bbox[1][0]:bbox[1][1]]
 					# print(img_transverse.shape) #(64,64)
 
-
-
-				# If -img argument passed will save the patch as a .png
-				if SAVE_IMG:
+				#### ---- Writing patch.png to patches/ ---- ####
+				if SAVE_IMG: # only ff -img flag is passed
 					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
 							class_id,
 							seriesuid,
@@ -261,15 +260,15 @@ def main():
 				# 	continue
 
 
-
 				#### ---- Writing Data to HDF5 ---- ####
 				# Flatten class, and x,y,z coords into vector for storage
 				meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
 
 				if img_count == 0: # For first patch only
 					img_dset[:] = img_transverse
 					class_dset[:] = meta_data
-					uuid_dset[:] = seriesuid
+					uuid_dset[:] = seriesuid_str
 				else:
 					row = img_dset.shape[0] # Count current dataset rows
 					img_dset.resize(row+1, axis=0) # Add new row
@@ -281,7 +280,7 @@ def main():
 
 					row = uuid_dset.shape[0]
 					class_dset.resize(row+1, axis=0)
-					class_dset[row, :] = seriesuid
+					class_dset[row, :] = seriesuid_str
 					sys.exit()
 
 if __name__ == '__main__':
