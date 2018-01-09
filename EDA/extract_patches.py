@@ -8,6 +8,7 @@
 import sys
 import os
 import argparse
+from configparser import ConfigParser
 import pathlib
 from glob import glob
 from random import shuffle
@@ -20,32 +21,35 @@ import matplotlib.pyplot as plt
 from scipy.misc import imsave # might require: conda install Pillow
 
 
+#### ---- ConfigParse Utility ---- ####
+# config = ConfigParser()
+# config.read('extract_patches_config.ini')
+#
+# DATA_DIR = config.get('local', 'data')
+# CSV_PATH = config.get('local', 'csv')
+# IMG_PATH = config.get('local', 'img')
+
 #### ---- Argparse Utility ---- ####
 # TODO - change argparse utility (move some of it to config file)
-parser = argparse.ArgumentParser(description='Requires path to Luna16 and subset(s),\
-									option to use 3d tensors',
-								add_help=True)
+parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
 parser.add_argument('-img', action="store_true", dest="img", default=False,
-						help='Flag to save imgs to patches/*.png')
-parser.add_argument('-tensor', action="store_true", dest="tensor", default=False,
-						help='Flag to create 3d tensor objects')
-parser.add_argument('-slices', type=int,action="store", dest="slices",
-						help='Num of tensor slices')
+						help='Save .png patches to ./patches/')
+# parser.add_argument('-tensor', action="store_true", dest="tensor", default=False,
+# 						help='Flag to create 3d tensor objects')
+parser.add_argument('-slices', type=int, action="store", dest="slices",
+						default=1, help='Num of tensor slices > 0, default = 1')
+parser.add_argument('-dim', action="store", dest="dim", type=int, default=64,
+						help='Dimmension of the patch, default = 64')
 requiredNamed = parser.add_argument_group('required named arguments')
-requiredNamed.add_argument('-dim', action="store", dest="dim", type=int, required=True,
-						help='Dimmension of the patch e.g. 64 or 32')
-requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
-						help='Dir to data e.g. ~/kyle/data/luna16/')
+
+# requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
+# 						help='Dir to data e.g. ~/kyle/data/luna16/')
 requiredNamed.add_argument('-subset', action="store", dest="subset",
 						type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
-						required=True, help='list subset number(s) e.g. 0,1,2')
-requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, required=True,
-						help='Luna CSV dir name e.g. luna-csvs/')
+						required=True, help='subset dir name or number(s) e.g. 0,1,2')
+# requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, required=True,
+# 						help='Luna CSV dir name e.g. luna-csvs/')
 args = parser.parse_args()
-
-
-#### ---- Config File Utility ---- ####
-#TODO
 
 
 #### ---- Global Vars ---- ####
@@ -103,61 +107,61 @@ def normalize_img(img):
 							img.GetPixelIDValue())
 
 #TODO Remove make mask
-def make_mask(center,diam,z,width,height,depth,spacing,origin,
-			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
-
-	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
-	#convert to nodule space from world coordinates
-
-	padMask = 5
-
-	# Defining the voxel range in which the nodule falls
-	v_center = (center-origin)/spacing
-	v_diam = int(diam/spacing[0]+padMask)
-	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
-	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
-	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
-	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
-
-	v_xrange = range(v_xmin,v_xmax+1)
-	v_yrange = range(v_ymin,v_ymax+1)
-
-	# Convert back to world coordinates for distance calculation
-	x_data = [x*spacing[0]+origin[0] for x in range(width)]
-	y_data = [x*spacing[1]+origin[1] for x in range(height)]
-
-
-	# RECTANGULAR MASK
-	for v_x in v_xrange:
-		for v_y in v_yrange:
-			p_x = spacing[0]*v_x + origin[0]
-			p_y = spacing[1]*v_y + origin[1]
-			if ((p_x >= (center[0] - mask_width)) &
-				(p_x <= (center[0] + mask_width)) &
-				(p_y >= (center[1] - mask_height)) &
-				(p_y <= (center[1] + mask_height))):
-
-				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
-					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
-
-
-	# TODO:  The height and width seemed to be switched.
-	# This works but needs to be simplified. It"s probably due to SimpleITK
-	# versus Numpy transposed indicies.
-	left = np.max([0, np.abs(center[0] - origin[0]) - mask_width]).astype(int)
-	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
-	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
-	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
-
-	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
-	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
-
-	bbox = [[down, up], [left, right], [bottom, top]]
-    #
-	# print(type(bbox))
-	# print(bbox)
-
-	return mask, bbox
+# def make_mask(center,diam,z,width,height,depth,spacing,origin,
+# 			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
+#
+# 	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
+# 	#convert to nodule space from world coordinates
+#
+# 	padMask = 5
+#
+# 	# Defining the voxel range in which the nodule falls
+# 	v_center = (center-origin)/spacing
+# 	v_diam = int(diam/spacing[0]+padMask)
+# 	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
+# 	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
+# 	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
+# 	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
+#
+# 	v_xrange = range(v_xmin,v_xmax+1)
+# 	v_yrange = range(v_ymin,v_ymax+1)
+#
+# 	# Convert back to world coordinates for distance calculation
+# 	x_data = [x*spacing[0]+origin[0] for x in range(width)]
+# 	y_data = [x*spacing[1]+origin[1] for x in range(height)]
+#
+#
+# 	# RECTANGULAR MASK
+# 	for v_x in v_xrange:
+# 		for v_y in v_yrange:
+# 			p_x = spacing[0]*v_x + origin[0]
+# 			p_y = spacing[1]*v_y + origin[1]
+# 			if ((p_x >= (center[0] - mask_width)) &
+# 				(p_x <= (center[0] + mask_width)) &
+# 				(p_y >= (center[1] - mask_height)) &
+# 				(p_y <= (center[1] + mask_height))):
+#
+# 				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
+# 					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
+#
+#
+# 	# TODO:  The height and width seemed to be switched.
+# 	# This works but needs to be simplified. It"s probably due to SimpleITK
+# 	# versus Numpy transposed indicies.
+# 	left = np.max([0, np.abs(center[0] - origin[0]) - mask_width]).astype(int)
+# 	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
+# 	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
+# 	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
+#
+# 	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
+# 	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
+#
+# 	bbox = [[down, up], [left, right], [bottom, top]]
+#     #
+# 	# print(type(bbox))
+# 	# print(bbox)
+#
+# 	return mask, bbox
 
 
 def main():
