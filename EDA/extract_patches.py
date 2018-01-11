@@ -112,39 +112,39 @@ def normalize_img(img):
 def make_mask(center,diam,z,width,height,depth,spacing,origin,
 			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
 
-	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
-	#convert to nodule space from world coordinates
-
-	padMask = 5
-
-	# Defining the voxel range in which the nodule falls
-	v_center = (center-origin)/spacing
-	v_diam = int(diam/spacing[0]+padMask)
-	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
-	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
-	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
-	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
-
-	v_xrange = range(v_xmin,v_xmax+1)
-	v_yrange = range(v_ymin,v_ymax+1)
-
-	# Convert back to world coordinates for distance calculation
-	x_data = [x*spacing[0]+origin[0] for x in range(width)]
-	y_data = [x*spacing[1]+origin[1] for x in range(height)]
-
-
-	# RECTANGULAR MASK
-	for v_x in v_xrange:
-		for v_y in v_yrange:
-			p_x = spacing[0]*v_x + origin[0]
-			p_y = spacing[1]*v_y + origin[1]
-			if ((p_x >= (center[0] - mask_width)) &
-				(p_x <= (center[0] + mask_width)) &
-				(p_y >= (center[1] - mask_height)) &
-				(p_y <= (center[1] + mask_height))):
-
-				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
-					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
+	# mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
+	# #convert to nodule space from world coordinates
+    #
+	# padMask = 5 #??
+    #
+	# # Defining the voxel range in which the nodule falls
+	# v_center = (center-origin)/spacing
+	# v_diam = int(diam/spacing[0]+padMask) #TODO why diamter not radius
+	# v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
+	# v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
+	# v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
+	# v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
+    #
+	# v_xrange = range(v_xmin,v_xmax+1)
+	# v_yrange = range(v_ymin,v_ymax+1)
+    #
+	# # # Convert back to world coordinates for distance calculation
+	# # x_data = [x*spacing[0]+origin[0] for x in range(width)]
+	# # y_data = [x*spacing[1]+origin[1] for x in range(height)]
+    #
+    #
+	# # RECTANGULAR MASK
+	# for v_x in v_xrange:
+	# 	for v_y in v_yrange:
+	# 		p_x = spacing[0]*v_x + origin[0]
+	# 		p_y = spacing[1]*v_y + origin[1]
+	# 		if ((p_x >= (center[0] - mask_width)) &
+	# 			(p_x <= (center[0] + mask_width)) &
+	# 			(p_y >= (center[1] - mask_height)) &
+	# 			(p_y <= (center[1] + mask_height))):
+    #
+	# 			mask[int((np.abs(p_y-origin[1]))/spacing[1]),
+	# 				int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
 
 
 	# TODO:  The height and width seemed to be switched.
@@ -154,37 +154,31 @@ def make_mask(center,diam,z,width,height,depth,spacing,origin,
 	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
 	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
 	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
-
 	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
 	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
 
 	bbox = [[down, up], [left, right], [bottom, top]]
-    #
-	# print(type(bbox))
-	# print(bbox)
-
-	return mask, bbox
+	return bbox
+	# return mask, bbox
 
 
 def main():
 	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
-		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
+		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM*PATCH_DIM))
 		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
-		# set up dataset for seriesuid
-		# datatype = h5py.special_dtype(vlen=bytes)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes)) #old one
-		# uuid_dset = HDF5.create_dataset('uuid', (1,150), maxshape=(None,150), dtype=datatype) #old one
 		print("Created HDF5 File and Three Datasets")
 
-
 		#### ---- Iterating through a CT scan ---- ####
+		print(len(FILE_LIST))
 		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
 			#TODO remove enumerate and set a Flag for first loop
 
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
+
 
 			"""
 			Extracts 2D patches from the 3 planes (transverse, coronal, and sagittal).
@@ -206,27 +200,32 @@ def main():
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
+
 			#### ---- Iterating through a CT scan's slices ---- ####
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
+				# Pulling out info from the DF
 				candidate_x = cur_row["coordX"]
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
 				diam = cur_row["diameter_mm"]  # Only defined for true positives
 				if np.isnan(diam):
 					diam = 30.0  # If NaN, then just use a default of 30 mm
-
+					#TODO ask tony why size = 30 mm when annotations has the max to be 32.27???
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
 
-				mask_width = 32 # This is really the half width so window will be double this width
-				mask_height = 32 # This is really the half height so window will be double this height
-				mask_depth = 32 # This is really the half depth so window will be double this depth
+				#TODO remove mssking
+				mask_width = PATCH_DIM/2 # This is really the half width so window will be double this width
+				mask_height = PATCH_DIM/2 # This is really the half height so window will be double this height
+				mask_depth = NUM_SLICES/2 # This is really the half depth so window will be double this depth
+
 
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
+				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 				voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
 
 				# Calculates the bounding box (and ROI mask) for desired position
-				mask, bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
+				bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
 									   width, height, slice_z, spacing, origin,
 									   mask_width, mask_height, mask_depth)
 				# a numpy array size of DIM x DIM
@@ -243,9 +242,24 @@ def main():
 	            #             bbox[1][0]:bbox[1][1]]
 					# print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
 				# else:
-				img_transverse = img_array[voxel_center[2],
+				# img_transverse = img_array[voxel_center[2],
+				# 	bbox[0][0]:bbox[0][1],
+				# 	bbox[1][0]:bbox[1][1]]bbox[]
+
+
+
+				#3d....
+				img_transverse = img_array[
 					bbox[0][0]:bbox[0][1],
-					bbox[1][0]:bbox[1][1]]
+					bbox[1][0]:bbox[1][1],
+					bbox[2][0]:bbox[2][1]]
+				print(type(img_transverse))
+				# print(img_transverse)
+				print(img_transverse.shape)
+				sys.exit()
+
+
+
 					# print(img_transverse.shape) #(64,64)
 
 				#### ---- Writing patch.png to patches/ ---- ####
@@ -286,7 +300,6 @@ def main():
 					row = uuid_dset.shape[0]
 					class_dset.resize(row+1, axis=0)
 					class_dset[row, :] = seriesuid_str
-					sys.exit()
 
 if __name__ == '__main__':
 	main()
