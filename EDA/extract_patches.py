@@ -4,6 +4,11 @@
 # made their code publically availble, parts of which we are using in this script.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
+#TODO: test 2d / 3d patches and read / reshape into numpy (ipython notebook)
+#TODO: fix clipping for 2d/3d and test
+#TODO: Clean Up main for loop code and comment sparingly
+
+
 #### ---- Imports & Dependencies ---- ####
 import sys
 import os
