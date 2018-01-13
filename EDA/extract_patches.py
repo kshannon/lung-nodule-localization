@@ -132,7 +132,6 @@ def make_bbox(center,width,height,depth,origin):
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
 	2d in the case where PATCH_DEPTH = 1
 	"""
-
 	# TODO:  The height and width seemed to be switched. Simplify if possible
 	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
 	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
@@ -237,13 +236,11 @@ def main():
 					img_dset[:] = patch
 					class_dset[:] = meta_data
 					uuid_dset[:] = seriesuid_str
-					print("wrote data ")
 					first_patch = False
 				else:
 					row = img_dset.shape[0] # Count current dataset rows
 					img_dset.resize(row+1, axis=0) # Add new row
 					img_dset[row, :] = patch # Insert data into new row
-					print("wrote data! Fuck Yeah!!")
 
 					row = class_dset.shape[0]
 					class_dset.resize(row+1, axis=0)
