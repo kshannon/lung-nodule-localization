@@ -4,60 +4,91 @@
 # made their code publically availble, parts of which we are using in this script.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
+#TODO: fix clipping for 2d/3d and test
+#TODO: determine if voxel edge detection is a suffucient issue to solve.
+
+
 #### ---- Imports & Dependencies ---- ####
 import sys
 import os
 import argparse
+from configparser import ConfigParser
 import pathlib
 from glob import glob
 from random import shuffle
-import SimpleITK as sitk   # pip install SimpleITK
-from tqdm import tqdm    # pip install tqdm
+import SimpleITK as sitk # pip install SimpleITK
+from tqdm import tqdm # pip install tqdm
 import h5py
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.misc import imsave # might require: conda install Pillow
+from scipy.misc import imsave # conda install Pillow or PIL
 
 
 #### ---- Argparse Utility ---- ####
-parser = argparse.ArgumentParser(description='Requires path to Luna16 and subset(s),\
-									option to use 3d tensors',
-								add_help=True)
-parser.add_argument('-img', action="store_true", dest="img", default=False,
-						help='Flag to save imgs to patches/*.png')
-parser.add_argument('-tensor', action="store_true", dest="tensor", default=False,
-						help='Flag to create 3d tensor objects')
-parser.add_argument('-slices', type=int,action="store", dest="slices",
-						help='Num of tensor slices')
+parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
+parser.add_argument('-img',
+					action="store_true",
+					dest="img",
+					default=False,
+					help='Save .png patches to ./patches/')
+parser.add_argument('-slices',
+					type=int,
+					action="store",
+					dest="slices",
+					default=1,
+					help='Num of tensor slices > 0, default = 1')
+parser.add_argument('-dim',
+					action="store",
+					dest="dim",
+					type=int,
+					default=64,
+					help='Dimmension of the patch, default = 64')
+parser.add_argument('-remote',
+					action="store_true",
+					dest="remote",
+					default=False,
+					help='Use if running script remote e.g. AWS')
+
 requiredNamed = parser.add_argument_group('required named arguments')
-requiredNamed.add_argument('-dim', action="store", dest="dim", type=int, required=True,
-						help='Dimmension of the patch e.g. 64 or 32')
-requiredNamed.add_argument('-data', action="store", dest="data", type=str, required=True,
-						help='Dir to data e.g. ~/kyle/data/luna16/')
-requiredNamed.add_argument('-subset', action="store", dest="subset",
-						type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
-						required=True, help='list subset number(s) e.g. 0,1,2')
-requiredNamed.add_argument('-csv', action="store", dest="csv", type=str, required=True,
-						help='Luna CSV dir name e.g. luna-csvs/')
+requiredNamed.add_argument('-subset',
+							action="store",
+							dest="subset",
+							type=lambda s: ['subset'+str(x)+'/' for x in s.split(',')],
+							required=True,
+							help='subset dir name or number(s) e.g. 0,1,2')
 args = parser.parse_args()
 
 
+#### ---- ConfigParse Utility ---- ####
+config = ConfigParser()
+config.read('extract_patches_config.ini') #local just for now (need if - else for AWS)
+
+# Example extract_patches_config.ini file:
+	# [local]
+	# LUNA_PATH = /Users/keil/datasets/LUNA16/
+	# CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
+	# IMG_PATH = /Users/keil/datasets/LUNA16/patches/
+	# [remote]
+	# # - when we move to AWS
+
+
 #### ---- Global Vars ---- ####
-PATCH_DIM = args.dim
-DATA_DIR = args.data
+LUNA_PATH = config.get('local', 'LUNA_PATH')
+CSV_PATH = config.get('local', 'CSV_PATH')
+IMG_PATH = config.get('local', 'IMG_PATH')
 SUBSET = args.subset
-CSV_PATH = args.csv
 SAVE_IMG = args.img
-TENSOR = args.tensor
-TENSOR_DIM = args.slices
-MASK_DIMS = tuple([int(PATCH_DIM/2)])*3 #set the width, height, depth, pass to make_mask()
+PATCH_DIM = args.dim
+NUM_SLICES = args.slices
+# This is really the half (width,height,depth) so window will be double these values
+PATCH_WIDTH = PATCH_DIM/2
+PATCH_HEIGHT = PATCH_DIM/2
+PATCH_DEPTH = NUM_SLICES/2
+# WORK_REMOTE = args.remote #add later w/ AWS
+DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
 for unique_set in SUBSET:
-	FILE_LIST.extend(glob("{}{}/*.mhd".format(DATA_DIR, unique_set))) #add subset of .mhd files
-	# FILE_LIST = glob("{}subset{}/*.mhd".format(DATA_DIR, SUBSET)
-DF_NODE = pd.read_csv(DATA_DIR + CSV_PATH + "candidates_with_annotations.csv")
-	# DF_NODE = pd.read_csv(DATA_DIR+"csv-files/candidates_V2.csv")
+	FILE_LIST.extend(glob("{}{}/*.mhd".format(LUNA_PATH, unique_set))) #add subset of .mhd files
 
 
 #### ---- Helper Functions ---- ####
@@ -83,10 +114,9 @@ def normalize_img(img):
 	new_y_size = int(img.GetSpacing()[1]*img.GetHeight())
 	new_z_size = int(img.GetSpacing()[2]*img.GetDepth())
 	new_size = [new_x_size, new_y_size, new_z_size]
-
-	# new_spacing = [old_sz*old_spc/new_sz  for old_sz, old_spc, new_sz in zip(img.GetSize(), img.GetSpacing(), new_size)]
 	new_spacing = [1,1,1]  # New spacing to be 1.0 x 1.0 x 1.0 mm voxel size
-	interpolator_type = sitk.sitkLinear
+
+	interpolator_type = sitk.sitkBSpline #sitkLinear using BSpline over Linear
 	return sitk.Resample(img, np.array(new_size, dtype='uint32').tolist(),
 							sitk.Transform(),
 							interpolator_type,
@@ -97,95 +127,48 @@ def normalize_img(img):
 							img.GetPixelIDValue())
 
 
-def make_mask(center,diam,z,width,height,depth,spacing,origin,
-			  mask_width=MASK_DIMS[0],mask_height=MASK_DIMS[1],mask_depth=MASK_DIMS[2]):
+def make_bbox(center,width,height,depth,origin):
 	"""
-	Center : centers of circles px -- list of coordinates x,y,z
-	diam : diameters of circles px -- diameter
-	z = z position of slice in world coordinates mm
-	width X height : pixel dim of image
-	spacing = mm/px conversion rate np array x,y,z
-	origin = x,y,z mm np.array
+	Returns a 3d (numpy tensor) bounding box from the CT scan.
+	2d in the case where PATCH_DEPTH = 1
 	"""
-	mask = np.zeros([height,width]) # 0"s everywhere except nodule swapping x,y to match img
-	#convert to nodule space from world coordinates
-
-	padMask = 5
-
-	# Defining the voxel range in which the nodule falls
-	v_center = (center-origin)/spacing
-	v_diam = int(diam/spacing[0]+padMask)
-	v_xmin = np.max([0,int(v_center[0]-v_diam)-padMask])
-	v_xmax = np.min([width-1,int(v_center[0]+v_diam)+padMask])
-	v_ymin = np.max([0,int(v_center[1]-v_diam)-padMask])
-	v_ymax = np.min([height-1,int(v_center[1]+v_diam)+padMask])
-
-	v_xrange = range(v_xmin,v_xmax+1)
-	v_yrange = range(v_ymin,v_ymax+1)
-
-	# Convert back to world coordinates for distance calculation
-	x_data = [x*spacing[0]+origin[0] for x in range(width)]
-	y_data = [x*spacing[1]+origin[1] for x in range(height)]
-
-
-	# RECTANGULAR MASK
-	for v_x in v_xrange:
-		for v_y in v_yrange:
-			p_x = spacing[0]*v_x + origin[0]
-			p_y = spacing[1]*v_y + origin[1]
-			if ((p_x >= (center[0] - mask_width)) &
-				(p_x <= (center[0] + mask_width)) &
-				(p_y >= (center[1] - mask_height)) &
-				(p_y <= (center[1] + mask_height))):
-
-				mask[int((np.abs(p_y-origin[1]))/spacing[1]),
-					int((np.abs(p_x-origin[0]))/spacing[0])] = 1.0
-
-
-	# TODO:  The height and width seemed to be switched.
-	# This works but needs to be simplified. It"s probably due to SimpleITK
-	# versus Numpy transposed indicies.
-	left = np.max([0, np.abs(center[0] - origin[0]) - mask_width]).astype(int)
-	right = np.min([width, np.abs(center[0] - origin[0]) + mask_width]).astype(int)
-	down = np.max([0, np.abs(center[1] - origin[1]) - mask_height]).astype(int)
-	up = np.min([height, np.abs(center[1] - origin[1]) + mask_height]).astype(int)
-
-	top = np.min([depth, np.abs(center[2] - origin[2]) + mask_depth]).astype(int)
-	bottom = np.max([0, np.abs(center[2] - origin[2]) - mask_depth]).astype(int)
+	# TODO:  The height and width seemed to be switched. Simplify if possible
+	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
+	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
+	down = np.max([0, np.abs(center[1] - origin[1]) - PATCH_HEIGHT]).astype(int)
+	up = np.min([height, np.abs(center[1] - origin[1]) + PATCH_HEIGHT]).astype(int)
+	top = np.min([depth, np.abs(center[2] - origin[2]) + PATCH_DEPTH]).astype(int)
+	bottom = np.max([0, np.abs(center[2] - origin[2]) - PATCH_DEPTH]).astype(int)
 
 	bbox = [[down, up], [left, right], [bottom, top]]
-    #
-	# print(type(bbox))
-	# print(bbox)
-
-	return mask, bbox
+	return bbox
 
 
+#### ---- Process CT Scans and extract Patches (the pipeline) ---- ####
 def main():
+	"""
+	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
+	Normalize the imgs, create mini patches and write them to the hdf5 file system
+	"""
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
+		# Datasets for 3d patch tensors & class_id/x,y,z coords
+		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
+		img_dset = HDF5.create_dataset('patches', (1,total_patch_dim), maxshape=(None,total_patch_dim))
+		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
+		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes)) #old one
+		print("Created HDF5 File and Three Datasets")
 
-	with h5py.File(DATA_DIR + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
-		img_dset = HDF5.create_dataset('patches', (1,PATCH_DIM*PATCH_DIM), maxshape=(None,PATCH_DIM*PATCH_DIM))
-		img_dset.attrs['patch_size'] = PATCH_DIM
-		img_dset.attrs['plane'] = 'transverse'
-		class_dset = HDF5.create_dataset('classes', (1,1), maxshape=(None,1), dtype=int)
-		class_dset.attrs['classes'] = '2'
-		print("Created HDF5 File and Datasets")
-
-		####### The CT Scan Level #######
-		for img_count, img_file in enumerate(tqdm(FILE_LIST)):
+		#### ---- Iterating through a CT scan ---- ####
+		first_patch = True # flag for saving first img to hdf5
+		for img_file in tqdm(FILE_LIST):
 
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
 
-			"""
-			Extracts 2D patches from the 3 planes (transverse, coronal, and sagittal).
-			The sticking point here is the order of the axes. Numpy is z,y,x and SimpleITK is x,y,z.
-			I've found it very difficult to keep the order correct when going back and forth,
-			but this code seems to pass the sanity checks.
-			"""
 			# Load the CT scan (3D .mhd file)
-			itk_img = sitk.ReadImage(img_file)  # indices are x,y,z (note the ordering of dimesions)
+			# Numpy is z,y,x and SimpleITK is x,y,z -- (note the ordering of dimesions)
+			itk_img = sitk.ReadImage(img_file)
 
 			# Normalize the image spacing so that a voxel is 1x1x1 mm in dimension
 			itk_img = normalize_img(itk_img)
@@ -193,121 +176,79 @@ def main():
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
 
-
 			slice_z, height, width = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
-			####### The Slice Level #######
-			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 
+			#### ---- Iterating through a CT scan's slices ---- ####
+			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
+				# Pulling out info from the DF
+
+
+				class_id = cur_row["class"] #0 for false, 1 for true nodule
+				diam = cur_row["diameter_mm"]  # Only defined for true positives
+				if np.isnan(diam):
+					#TODO ask tony why size = 30 mm when annotations has the max to be 32.27???
+					diam = 30.0  # If NaN, then just use a default of 30 mm
+
 				candidate_x = cur_row["coordX"]
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
-				diam = cur_row["diameter_mm"]  # Only defined for true positives
-				if np.isnan(diam):
-					diam = 30.0  # If NaN, then just use a default of 30 mm
-
-				class_id = cur_row["class"] #0 for false, 1 for true nodule
-
-				mask_width = 32 # This is really the half width so window will be double this width
-				mask_height = 32 # This is really the half height so window will be double this height
-				mask_depth = 32 # This is really the half depth so window will be double this depth
-
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
-				voxel_center = np.rint((center-origin)/spacing).astype(int)  # candidate center in voxel space (still x,y,z ordering)
-
-				# Calculates the bounding box (and ROI mask) for desired position
-				mask, bbox = make_mask(center, diam, voxel_center[2]*spacing[2]+origin[2],
-									   width, height, slice_z, spacing, origin,
-									   mask_width, mask_height, mask_depth)
-
-				# a numpy array size of DIM x DIM
-				# Confer with https://en.wikipedia.org/wiki/Anatomical_terms_of_location#Planes
-				# Transverse slice 2D view - Y-X plane
-				# img = img_array[bbox[2][0]:bbox[2][1],
-				# 		bbox[0][0]:bbox[0][1],
-				# 		bbox[1][0]:bbox[1][1]]
-				# print(img.shape)
-
-				if TENSOR:
-					img_transverse = img_array[bbox[2][0]:bbox[2][1],
-	                        bbox[0][0]:bbox[0][1],
-	                        bbox[1][0]:bbox[1][1]]
-					# print(img.shape) #(60,64,64) mask_depth roughly half of this value [60]
-				else:
-					img_transverse = img_array[voxel_center[2],
-						bbox[0][0]:bbox[0][1],
-						bbox[1][0]:bbox[1][1]]
-					# print(img_transverse.shape) #(64,64)
-
-				# sys.exit()
+				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 
 
-				# If -img argument passed will save the patch as a .png
-				if SAVE_IMG:
-					imsave(DATA_DIR + "sample_patches/class_{}_uid_{}_xyz_{}_{}_{}.png".format(
+				#### ---- Generating the Patch ---- ####
+				bbox = make_bbox(center, width, height, slice_z, origin) #return bounding box
+				patch = img_array[
+					bbox[0][0]:bbox[0][1],
+					bbox[1][0]:bbox[1][1],
+					bbox[2][0]:bbox[2][1]]
+
+
+				#### ---- Writing patch.png to patches/ ---- ####
+				if SAVE_IMG: # only ff -img flag is passed
+					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
 							class_id,
 							seriesuid,
 							candidate_x,
 							candidate_y,
-							candidate_z), img_transverse)
+							candidate_z), patch.T)
 
+				#### ---- Further Data Preporcessing ---- ####
+				patch = normalizePlanes(patch) #normalize patch to HU units
+				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
+
+				# TODO: fix patch clipping for 3d
 				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
-				# TODO: fix patch clipping for 2d & 3d
-				img_transverse = normalizePlanes(img_transverse) #normalize HU units
-				img_transverse = img_transverse.ravel().reshape(1,-1) #flatten img
-				if img_transverse.shape[1] != PATCH_DIM * PATCH_DIM:
+				if patch.shape[1] != total_patch_dim:
 					continue
-				if img_count == 0:
-					img_dset[:] = img_transverse
-					class_dset[:] = class_id
+
+
+				#### ---- Writing Data to HDF5 ---- ####
+				# Flatten class, and x,y,z coords into vector for storage
+				meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
+
+				if first_patch == True: # For first patch only
+					img_dset[:] = patch
+					class_dset[:] = meta_data
+					uuid_dset[:] = seriesuid_str
+					first_patch = False
 				else:
-					row = img_dset.shape[0] # How many rows in the dataset currently?
-					img_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
-					img_dset[row, :] = img_transverse
+					row = img_dset.shape[0] # Count current dataset rows
+					img_dset.resize(row+1, axis=0) # Add new row
+					img_dset[row, :] = patch # Insert data into new row
 
-					row = class_dset.shape[0] # How many rows in the dataset currently?
-					class_dset.resize(row+1, axis=0) # Add one more row (i.e. new ROI)
-					class_dset[row, :] = int(class_id)
+					row = class_dset.shape[0]
+					class_dset.resize(row+1, axis=0)
+					class_dset[row, :] = meta_data
 
+					row = uuid_dset.shape[0]
+					uuid_dset.resize(row+1, axis=0)
+					uuid_dset[row, :] = seriesuid_str
 
 if __name__ == '__main__':
 	main()
-
-	############
-	#
-	# Getting list of image files
-	# output_path = "./patches/"
-	# train_path = output_path + "train/"
-	# validation_path = output_path + "validation/"
-	#
-	# NEED to ADD BACK DIR CHECKING
-	# # Create the output directories if they don't exist
-	# pathlib.Path(train_path+"class_0/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(train_path+"class_1/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(validation_path+"class_0/").mkdir(parents=True, exist_ok=True)
-	# pathlib.Path(validation_path+"class_1/").mkdir(parents=True, exist_ok=True)
-
-
-#### ---- Optional Side Quests ---- ####
-
-# Sagittal slice 2D view - Z-Y plane
-# img_sagittal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-# 	bbox[0][0]:bbox[0][1],
-# 	voxel_center[0]])
-
-# Coronal slice 2D view - Z-X plane
-# img_coronal = normalizePlanes(img_array[bbox[2][0]:bbox[2][1],
-# 	voxel_center[1],
-# 	bbox[1][0]:bbox[1][1]])
-
-# SPHERICAL MASK
-# Fill in 1 within sphere around nodule
-#     for v_x in v_xrange:
-#         for v_y in v_yrange:
-#             p_x = spacing[0]*v_x + origin[0]
-#             p_y = spacing[1]*v_y + origin[1]
-#             if np.linalg.norm(center-np.array([p_x,p_y,z]))<=diam:
-#                 mask[int((p_y-origin[1])/spacing[1]),int((p_x-origin[0])/spacing[0])] = 1.0

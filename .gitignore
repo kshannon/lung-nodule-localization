@@ -1,6 +1,11 @@
 # Project Specific Files & Directories
 data/
 logs/
+data
+logs
+*.conf
+*.ini
+*.config
 *-ignore.py
 *-ignore.ipynb
 
