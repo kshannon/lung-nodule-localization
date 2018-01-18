@@ -3,6 +3,7 @@ data/
 logs/
 data
 logs
+notes.txt
 *.conf
 *.ini
 *.config

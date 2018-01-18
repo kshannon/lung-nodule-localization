@@ -150,11 +150,21 @@ def make_bbox(center,width,height,depth,origin):
 	bbox = [[down, up], [left, right], [bottom, top]] #(back,abdomen - left side, right side - feet, head)
 	return bbox
 
-def save_img():
-	#TODO
-	pass
 
-def write_to_hdf5():
+def write_to_hdf5(dset_and_data,first_patch=False):
+	"""Accept zipped hdf5 dataset obj and numpy data, write data to dataset"""
+	dset = dset_and_data[0] #hdf5 dataset obj
+	data = dset_and_data[1] #1D numpy hdf5 writable data
+	if first_patch == True:
+		dset[:] = data #set the whole, empty, hdf5 dset = data
+		return
+	row = dset.shape[0] # Count current dataset rows
+	dset.resize(row+1, axis=0) # Add new row
+	dset[row, :] = data # Insert data into new row
+	return
+
+
+def save_img():
 	#TODO
 	pass
 
@@ -263,27 +273,15 @@ def main():
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				if first_patch == True: # For first patch only
-					img_dset[:] = patch
-					class_dset[:] = meta_data
-					uuid_dset[:] = seriesuid_str
-					first_patch = False
-					print("Images Being Saved to HDF5!")
+				hdf5_dsets = [img_dset, class_dset, uuid_dset]
+				hdf5_data = [patch, meta_data, seriesuid_str]
+				for dset_and_data in zip(hdf5_dsets,hdf5_data):
+					if first_patch == True:
+						write_to_hdf5(dset_and_data,first_patch=True)
+						first_patch = False
+					else:
+						write_to_hdf5(dset_and_data)
 
-				else:
-					if center[0] < -98.9: #and center[1] < -89.9:
-						print("center: " + str(center))
-					row = img_dset.shape[0] # Count current dataset rows
-					img_dset.resize(row+1, axis=0) # Add new row
-					img_dset[row, :] = patch # Insert data into new row
-
-					row = class_dset.shape[0]
-					class_dset.resize(row+1, axis=0)
-					class_dset[row, :] = meta_data
-
-					row = uuid_dset.shape[0]
-					uuid_dset.resize(row+1, axis=0)
-					uuid_dset[row, :] = seriesuid_str
 
 
 	print("All Images Processed and Patches written to HDF5. Thank you patch again!")
