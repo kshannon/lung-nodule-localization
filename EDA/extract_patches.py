@@ -132,6 +132,21 @@ def make_bbox(center,width,height,depth,origin):
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
 	2d in the case where PATCH_DEPTH = 1
 	"""
+
+	# for case of 1:
+	# Found a Bad Actor: (1, 3648)
+	# [[ 1.  1.  1. ...,  1.  1.  1.]]
+	# <class 'numpy.ndarray'>
+	# center: [-104.44 -155.43 -309.99]
+	# origin: [-130.23144531 -268.23144531 -405.        ]
+	# img_array: (341, 275, 275)
+	# --------------------------
+	# 3
+	# <class 'list'>
+	# [[80, 144], [0, 57], [94, 95]]
+
+
+
 	# TODO:  The height and width seemed to be switched. Simplify if possible
 	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
 	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
@@ -150,7 +165,7 @@ def main():
 	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
 	Normalize the imgs, create mini patches and write them to the hdf5 file system
 	"""
-	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'a') as HDF5:
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
 		img_dset = HDF5.create_dataset('patches', (1,total_patch_dim), maxshape=(None,total_patch_dim))
@@ -160,6 +175,8 @@ def main():
 
 		#### ---- Iterating through a CT scan ---- ####
 		first_patch = True # flag for saving first img to hdf5
+		ones = 0
+		issues = 0
 		for img_file in tqdm(FILE_LIST):
 
 			base=os.path.basename(img_file)  # Strip the filename out
@@ -175,8 +192,11 @@ def main():
 
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
-
+			img_array = np.pad(img_array, int(PATCH_DIM/2), mode="constant", constant_values=0) #0 padding 3d array for patch clipping issue
 			slice_z, height, width = img_array.shape
+
+			print("slice_z, h, w: {} --- {} --- {} ".format(slice_z, height, width))
+
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
@@ -190,7 +210,6 @@ def main():
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
 				diam = cur_row["diameter_mm"]  # Only defined for true positives
 				if np.isnan(diam):
-					#TODO ask tony why size = 30 mm when annotations has the max to be 32.27???
 					diam = 30.0  # If NaN, then just use a default of 30 mm
 
 				candidate_x = cur_row["coordX"]
@@ -209,22 +228,69 @@ def main():
 
 
 				#### ---- Writing patch.png to patches/ ---- ####
+
 				if SAVE_IMG: # only ff -img flag is passed
+					#TODO 3d --> 2d and save img
+					# img_patch = img_array[
+					# 	bbox[1][0]:bbox[1][1],
+					# 	bbox[2][0]:bbox[2][1]]
+					# print(img_patch.shape)
+
 					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
 							class_id,
 							seriesuid,
 							candidate_x,
 							candidate_y,
-							candidate_z), patch.T)
+							candidate_z), patch)
 
 				#### ---- Further Data Preporcessing ---- ####
+				patch_post_bbox = patch
+				#TODO argparse away
 				patch = normalizePlanes(patch) #normalize patch to HU units
+				patch_post_norm = patch
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
+				patch_post_ravel = patch
 
 				# TODO: fix patch clipping for 3d
 				# For now we will ignore imgs where the patch is getting clipped by the edge(s)
-				if patch.shape[1] != total_patch_dim:
+				# if patch.shape[1] == 0:
+					# print("Found a Bad Actor: " + str(patch.shape))
+					# print(patch)
+					# print(type(patch))
+					# print("center: " + str(center))
+					# print("origin: " + str(origin))
+					# print("img_array: " + str(img_array.shape))
+					# print("--------------------------")
+					# print(len(bbox))
+					# print(type(bbox))
+					# print(bbox)
+					# sys.exit()
+				if patch.shape[1] == 0:
 					continue
+
+				# Y-axis issue with bbox, possibly due to patient axial position during CT Scan
+				# More info is needed to resolve this small Data integrity issue
+				# Note this issue DOES NOT effect any class 1 Pathes. Therefore we skip these for now.
+				# Recommend to confirm this hypothesis for scan w/ many class 1s
+				# Suggest this scan:
+				if patch.shape[1] != total_patch_dim and patch.shape[1] != 0:
+				# 	print("patch shape: " + str(patch.shape[1]))
+				# 	print(bbox)
+				# 	print(class_id)
+				# 	ones += int(class_id)
+				# 	issues += 1
+				# 	print("count of class: " + str(ones))
+				# 	print("num of issued: " + str(issues))
+				# 	print(bbox[0][1]-bbox[0][0])
+				# 	print(bbox[1][1]-bbox[1][0])
+				# 	print(bbox[2][1]-bbox[2][0])
+				# 	print("patch post bbox: " + str(patch_post_bbox.shape))
+				# 	print("patch post norm: " + str(patch_post_norm.shape))
+				# 	print("patch post ravel: " + str(patch_post_ravel.shape))
+				# 	print("img array shape" + str(img_array.shape))
+				# 	print("################################")
+					continue
+
 
 
 				#### ---- Writing Data to HDF5 ---- ####
@@ -237,6 +303,8 @@ def main():
 					class_dset[:] = meta_data
 					uuid_dset[:] = seriesuid_str
 					first_patch = False
+					print("First IMG saved to HDF5")
+
 				else:
 					row = img_dset.shape[0] # Count current dataset rows
 					img_dset.resize(row+1, axis=0) # Add new row
@@ -249,6 +317,8 @@ def main():
 					row = uuid_dset.shape[0]
 					uuid_dset.resize(row+1, axis=0)
 					uuid_dset[row, :] = seriesuid_str
+					print("New IMG saved to HDF5")
+
 
 if __name__ == '__main__':
 	main()
