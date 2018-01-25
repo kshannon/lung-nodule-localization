@@ -11,6 +11,7 @@
 import sys
 import os
 import argparse
+import csv
 from configparser import ConfigParser
 import pathlib
 from glob import glob
@@ -30,11 +31,11 @@ parser.add_argument('-img',
 					dest="img",
 					default=False,
 					help='Save .png patches to ./patches/')
-parser.add_argument('-hdf5',
+parser.add_argument('-csv',
 					action="store_true",
-					dest="hdf5",
+					dest="csv",
 					default=True,
-					help='Save processed data to hdf5)
+					help='Save processed data metadata to csv')
 parser.add_argument('-hu_norm',
 					action="store_true",
 					dest="hu_norm",
@@ -70,7 +71,7 @@ args = parser.parse_args()
 
 #### ---- ConfigParse Utility ---- ####
 config = ConfigParser()
-config.read('extract_patches_config.ini') #local just for now (need if - else for AWS)
+config.read('extract_patch_metadata_config.ini') #local just for now (need if - else for AWS)
 
 # Example extract_patches_config.ini file:
 	# [local]
@@ -87,7 +88,7 @@ CSV_PATH = config.get('local', 'CSV_PATH')
 IMG_PATH = config.get('local', 'IMG_PATH')
 SUBSET = args.subset
 SAVE_IMG = args.img
-SAVE_HDF5 = args.hdf5
+SAVE_CSV = args.csv
 HU_NORM = args.hu_norm
 PATCH_DIM = args.dim
 NUM_SLICES = args.slices
@@ -156,17 +157,10 @@ def make_bbox(center,width,height,depth,origin):
 	bbox = [[down, up], [left, right], [bottom, top]] #(back,abdomen - left side, right side - feet, head)
 	return bbox
 
-
-def write_to_hdf5(dset_and_data,first_patch=False):
-	"""Accept zipped hdf5 dataset obj and numpy data, write data to dataset"""
-	dset = dset_and_data[0] #hdf5 dataset obj
-	data = dset_and_data[1] #1D numpy hdf5 writable data
-	if first_patch == True:
-		dset[:] = data #set the whole, empty, hdf5 dset = data
-		return
-	row = dset.shape[0] # Count current dataset rows
-	dset.resize(row+1, axis=0) # Add new row
-	dset[row, :] = data # Insert data into new row
+# seriesuid,class_id,origin,center,diam,ct_img_dim
+def write_to_csv(csvwriter,uuid,class_id,origin,center,diam,ct_img_diam):
+	"""Accept patch processed data to write in CSV"""
+	csvwriter.writerow([uuid,class_id,origin[0],origin[1],origin[2],center[0],center[1],center[2],diam,ct_img_diam[0],ct_img_diam[1],ct_img_diam[2]])
 	return
 
 def save_img():
@@ -177,20 +171,15 @@ def save_img():
 #### ---- Process CT Scans and extract Patches (the pipeline) ---- ####
 def main():
 	"""
-	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
+	Create the csv file + meta data, iterate thriough the folders DICOM imgs
 	Normalize the imgs, create mini patches and write them to the hdf5 file system
 	"""
-	count_class = 0
-	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
-		# Datasets for 3d patch tensors & class_id/x,y,z coords
-		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
-		img_dset = HDF5.create_dataset('patches', (1,total_patch_dim), maxshape=(None,total_patch_dim))
-		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
-		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes)) #old one
-		print("Created HDF5 File and Three Datasets")
+	filename = CSV_PATH + "patch_metadata.csv"
+	with open(filename, "w") as csvfile:
+		csvwriter = csv.writer(csvfile,  delimiter=',')
+		csvwriter.writerow(["seriesuid","class_id","origin_x","origin_y","origin_z","center_x","center_y","center_z","diam","ct_dim_x","ct_dim_y","ct_dim_z"])
 
 		#### ---- Iterating through a CT scan ---- ####
-		first_patch = True # flag for saving first img to hdf5
 		for img_file in tqdm(FILE_LIST):
 
 			base=os.path.basename(img_file)  # Strip the filename out
@@ -224,15 +213,17 @@ def main():
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
+				ct_img_dim = img_array.shape
 				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 
+				write_to_csv(csvwriter,seriesuid,class_id,origin,center,diam,ct_img_dim) #write 12 cols.
 
 				#### ---- Generating the Patch ---- ####
-				bbox = make_bbox(center, width, height, slice_z, origin) #return bounding box
-				patch = img_array[
-					bbox[0][0]:bbox[0][1],
-					bbox[1][0]:bbox[1][1],
-					bbox[2][0]:bbox[2][1]]
+				# bbox = make_bbox(center, width, height, slice_z, origin) #return bounding box
+				# patch = img_array[
+				# 	bbox[0][0]:bbox[0][1],
+				# 	bbox[1][0]:bbox[1][1],
+				# 	bbox[2][0]:bbox[2][1]]
 
 
 				#### ---- Writing patch.png to patches/ ---- ####
@@ -247,12 +238,12 @@ def main():
 
 
 				#### ---- Prepare Data for HDF5 insert ---- ####
-				if HU_NORM:
-					patch = normalizePlanes(patch) #normalize patch to HU units
-				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
-				# Flatten class, and x,y,z coords into vector for storage
-				meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
-				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
+				# if HU_NORM:
+				# 	patch = normalizePlanes(patch) #normalize patch to HU units
+				# patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
+				# # Flatten class, and x,y,z coords into vector for storage
+				# meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+				# seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
 
 				## -- DEBUG -- ##
 				# if statement to catch patch clipping issues, uncomment to debug
@@ -266,21 +257,21 @@ def main():
 				# Note this issue DOES NOT effect any class 1 Pathes. Therefore we skip these for now.
 				# Recommend to confirm this hypothesis for scan w/ many class 1s
 				# Suggest this scan:
-				if patch.shape[1] != total_patch_dim and patch.shape[1] != 0:
-				# 	# print("--- Bad Actor Found! ---")
-				# 	# print("class ID: " + str(class_id))
-					count_class += int(class_id)
-					if class_id == 1:
-						print("--- Bad Actor Found! ---")
-						print("class ID: " + str(class_id))
-						print("origin: " + str(origin))
-						print("center: " + str(center))
-						print("img array shape" + str(img_array.shape))
-						print("patch shape: " + str(patch.shape[1]))
-						print("bbox: " + str(bbox))
-						print("seriesUID: " + str(seriesuid))
-						print("------------------------")
-					continue
+				# if patch.shape[1] != total_patch_dim and patch.shape[1] != 0:
+				# # 	# print("--- Bad Actor Found! ---")
+				# # 	# print("class ID: " + str(class_id))
+				# 	count_class += int(class_id)
+				# 	if class_id == 1:
+				# 		print("--- Bad Actor Found! ---")
+				# 		print("class ID: " + str(class_id))
+				# 		print("origin: " + str(origin))
+				# 		print("center: " + str(center))
+				# 		print("img array shape" + str(img_array.shape))
+				# 		print("patch shape: " + str(patch.shape[1]))
+				# 		print("bbox: " + str(bbox))
+				# 		print("seriesUID: " + str(seriesuid))
+				# 		print("------------------------")
+				# 	continue
 				# if class_id == 1:
 				# 		print("--- GOOD! ---")
 				# 		print("class ID: " + str(class_id))
@@ -293,19 +284,18 @@ def main():
 				# 		print("------------------------")
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				hdf5_dsets = [img_dset, class_dset, uuid_dset]
-				hdf5_data = [patch, meta_data, seriesuid_str]
-				for dset_and_data in zip(hdf5_dsets,hdf5_data):
-					if first_patch == True:
-						write_to_hdf5(dset_and_data,first_patch=True)
-						first_patch = False
-					else:
-						write_to_hdf5(dset_and_data)
+				# hdf5_dsets = [img_dset, class_dset, uuid_dset]
+				# hdf5_data = [patch, meta_data, seriesuid_str]
+				# for dset_and_data in zip(hdf5_dsets,hdf5_data):
+				# 	if first_patch == True:
+				# 		write_to_hdf5(dset_and_data,first_patch=True)
+				# 		first_patch = False
+				# 	else:
+				# 		write_to_hdf5(dset_and_data)
 
 
 
-	print("Number of class 1's found: " + str(count_class))
-	print("All Images Processed and Patches written to HDF5. Thank you patch again!")
+	print("All Images Processed and Patches written to csv. Thank you patch again!")
 	print('\a')
 
 if __name__ == '__main__':
