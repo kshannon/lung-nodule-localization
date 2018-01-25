@@ -1,12 +1,5 @@
 #! /usr/bin/env python
 
-# Thanks to Jonathan Mulholland and Aaron Sander from Booz Allen Hamilton who
-# made their code publically availble, parts of which we are using in this script.
-# https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
-
-#TODO: determine if voxel edge detection is a suffucient issue to solve.
-
-
 #### ---- Imports & Dependencies ---- ####
 import sys
 import os
@@ -18,14 +11,13 @@ from glob import glob
 from random import shuffle
 import SimpleITK as sitk # pip install SimpleITK
 from tqdm import tqdm # pip install tqdm
-import h5py
 import pandas as pd
 import numpy as np
 from scipy.misc import imsave # conda install Pillow or PIL
 
 
 #### ---- Argparse Utility ---- ####
-parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
+parser = argparse.ArgumentParser(description='Modify the patch metadata script',add_help=True)
 parser.add_argument('-img',
 					action="store_true",
 					dest="img",
@@ -36,11 +28,6 @@ parser.add_argument('-csv',
 					dest="csv",
 					default=True,
 					help='Save processed data metadata to csv')
-parser.add_argument('-hu_norm',
-					action="store_true",
-					dest="hu_norm",
-					default=False,
-					help='Normalize Patch to -1000 - 400 HU')
 parser.add_argument('-slices',
 					type=int,
 					action="store",
@@ -87,15 +74,9 @@ LUNA_PATH = config.get('local', 'LUNA_PATH')
 CSV_PATH = config.get('local', 'CSV_PATH')
 IMG_PATH = config.get('local', 'IMG_PATH')
 SUBSET = args.subset
-SAVE_IMG = args.img
 SAVE_CSV = args.csv
-HU_NORM = args.hu_norm
 PATCH_DIM = args.dim
 NUM_SLICES = args.slices
-# This is really the half (width,height,depth) so window will be double these values
-PATCH_WIDTH = PATCH_DIM/2
-PATCH_HEIGHT = PATCH_DIM/2
-PATCH_DEPTH = NUM_SLICES/2
 # WORK_REMOTE = args.remote #add later w/ AWS
 DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
@@ -104,18 +85,6 @@ for unique_set in SUBSET:
 
 
 #### ---- Helper Functions ---- ####
-def normalizePlanes(npzarray):
-	"""
-	Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
-	All other HU will be masked. Then we normalize pixel values between 0 and 1.
-	"""
-	maxHU, minHU = 400., 1000.
-	npzarray = (npzarray - minHU) / (maxHU - minHU)
-	npzarray[npzarray>1] = 1.
-	npzarray[npzarray<0] = 0.
-	return npzarray
-
-
 def normalize_img(img):
 	"""
 	Sets the MHD image to be approximately 1.0 mm voxel size
@@ -139,33 +108,21 @@ def normalize_img(img):
 							img.GetPixelIDValue())
 
 
-def make_bbox(center,width,height,depth,origin):
-	"""
-	Returns a 3d (numpy tensor) bounding box from the CT scan.
-	2d in the case where PATCH_DEPTH = 1
-	"""
-	# TODO:  The height and width seemed to be switched. Simplify if possible
-	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
-	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
-	# left = int((np.abs(center[0] - origin[0])) - PATCH_WIDTH) #DEBUG
-	# right = int((np.abs(center[0] - origin[0])) + PATCH_WIDTH) #DEBUG
-	down = np.max([0, np.abs(center[1] - origin[1]) - PATCH_HEIGHT]).astype(int)
-	up = np.min([height, np.abs(center[1] - origin[1]) + PATCH_HEIGHT]).astype(int)
-	top = np.min([depth, np.abs(center[2] - origin[2]) + PATCH_DEPTH]).astype(int)
-	bottom = np.max([0, np.abs(center[2] - origin[2]) - PATCH_DEPTH]).astype(int)
-
-	bbox = [[down, up], [left, right], [bottom, top]] #(back,abdomen - left side, right side - feet, head)
-	return bbox
-
-# seriesuid,class_id,origin,center,diam,ct_img_dim
 def write_to_csv(csvwriter,uuid,class_id,origin,center,diam,ct_img_diam):
 	"""Accept patch processed data to write in CSV"""
-	csvwriter.writerow([uuid,class_id,origin[0],origin[1],origin[2],center[0],center[1],center[2],diam,ct_img_diam[0],ct_img_diam[1],ct_img_diam[2]])
-	return
-
-def save_img():
-	#TODO
-	pass
+	csvwriter.writerow([uuid,
+						class_id,
+						origin[0],
+						origin[1],
+						origin[2],
+						center[0],
+						center[1],
+						center[2],
+						diam,
+						ct_img_diam[0],
+						ct_img_diam[1],
+						ct_img_diam[2]])
+	return csvwriter
 
 
 #### ---- Process CT Scans and extract Patches (the pipeline) ---- ####
@@ -177,7 +134,18 @@ def main():
 	filename = CSV_PATH + "patch_metadata.csv"
 	with open(filename, "w") as csvfile:
 		csvwriter = csv.writer(csvfile,  delimiter=',')
-		csvwriter.writerow(["seriesuid","class_id","origin_x","origin_y","origin_z","center_x","center_y","center_z","diam","ct_dim_x","ct_dim_y","ct_dim_z"])
+		csvwriter.writerow(["seriesuid",
+							"class_id",
+							"origin_x",
+							"origin_y",
+							"origin_z",
+							"center_x",
+							"center_y",
+							"center_z",
+							"diam",
+							"ct_dim_x",
+							"ct_dim_y",
+							"ct_dim_z"])
 
 		#### ---- Iterating through a CT scan ---- ####
 		for img_file in tqdm(FILE_LIST):
@@ -196,7 +164,7 @@ def main():
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
 			img_array = np.pad(img_array, int(PATCH_DIM/2), mode="constant", constant_values=0) #0 padding 3d array for patch clipping issue
-			slice_z, height, width = img_array.shape
+			ct_img_dim = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
 
@@ -213,89 +181,11 @@ def main():
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
-				ct_img_dim = img_array.shape
-				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 
 				write_to_csv(csvwriter,seriesuid,class_id,origin,center,diam,ct_img_dim) #write 12 cols.
 
-				#### ---- Generating the Patch ---- ####
-				# bbox = make_bbox(center, width, height, slice_z, origin) #return bounding box
-				# patch = img_array[
-				# 	bbox[0][0]:bbox[0][1],
-				# 	bbox[1][0]:bbox[1][1],
-				# 	bbox[2][0]:bbox[2][1]]
 
-
-				#### ---- Writing patch.png to patches/ ---- ####
-				#TODO 3d --> 2d and save img
-				if SAVE_IMG: # only if -img flag is passed
-					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
-							class_id,
-							seriesuid,
-							candidate_x,
-							candidate_y,
-							candidate_z), patch)
-
-
-				#### ---- Prepare Data for HDF5 insert ---- ####
-				# if HU_NORM:
-				# 	patch = normalizePlanes(patch) #normalize patch to HU units
-				# patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
-				# # Flatten class, and x,y,z coords into vector for storage
-				# meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
-				# seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
-
-				## -- DEBUG -- ##
-				# if statement to catch patch clipping issues, uncomment to debug
-				# if patch.shape[1] == 0:
-					# print("Patch Clipped: {}".format(patch.shape))
-				# 	continue
-
-				## -- DEBUG --##
-				# Y-axis issue with bbox, possibly due to patient axial position during CT Scan
-				# More info is needed to resolve this small Data integrity issue
-				# Note this issue DOES NOT effect any class 1 Pathes. Therefore we skip these for now.
-				# Recommend to confirm this hypothesis for scan w/ many class 1s
-				# Suggest this scan:
-				# if patch.shape[1] != total_patch_dim and patch.shape[1] != 0:
-				# # 	# print("--- Bad Actor Found! ---")
-				# # 	# print("class ID: " + str(class_id))
-				# 	count_class += int(class_id)
-				# 	if class_id == 1:
-				# 		print("--- Bad Actor Found! ---")
-				# 		print("class ID: " + str(class_id))
-				# 		print("origin: " + str(origin))
-				# 		print("center: " + str(center))
-				# 		print("img array shape" + str(img_array.shape))
-				# 		print("patch shape: " + str(patch.shape[1]))
-				# 		print("bbox: " + str(bbox))
-				# 		print("seriesUID: " + str(seriesuid))
-				# 		print("------------------------")
-				# 	continue
-				# if class_id == 1:
-				# 		print("--- GOOD! ---")
-				# 		print("class ID: " + str(class_id))
-				# 		print("origin: " + str(origin))
-				# 		print("center: " + str(center))
-				# 		print("img array shape" + str(img_array.shape))
-				# 		print("patch shape: " + str(patch.shape[1]))
-				# 		print("bbox: " + str(bbox))
-				# 		print("seriesUID: " + str(seriesuid))
-				# 		print("------------------------")
-
-				#### ---- Write Data to HDF5 insert ---- ####
-				# hdf5_dsets = [img_dset, class_dset, uuid_dset]
-				# hdf5_data = [patch, meta_data, seriesuid_str]
-				# for dset_and_data in zip(hdf5_dsets,hdf5_data):
-				# 	if first_patch == True:
-				# 		write_to_hdf5(dset_and_data,first_patch=True)
-				# 		first_patch = False
-				# 	else:
-				# 		write_to_hdf5(dset_and_data)
-
-
-
-	print("All Images Processed and Patches written to csv. Thank you patch again!")
+	print("All Images Processed and Metadata written to csv. Thank you patch again!")
 	print('\a')
 
 if __name__ == '__main__':
