@@ -4,7 +4,7 @@
 # made their code publically availble, parts of which we are using in this script.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
-#TODO: determine if voxel edge detection is a suffucient issue to solve.
+#TODO: determine if voxel edge detection is a sufficient issue to solve.
 
 
 #### ---- Imports & Dependencies ---- ####
@@ -51,7 +51,7 @@ parser.add_argument('-dim',
 					dest="dim",
 					type=int,
 					default=64,
-					help='Dimmension of the patch, default = 64')
+					help='Dimension of the patch, default = 64')
 parser.add_argument('-remote',
 					action="store_true",
 					dest="remote",
