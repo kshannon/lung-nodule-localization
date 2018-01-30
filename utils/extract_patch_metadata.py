@@ -60,15 +60,6 @@ args = parser.parse_args()
 config = ConfigParser()
 config.read('extract_patch_metadata_config.ini') #local just for now (need if - else for AWS)
 
-# Example extract_patches_config.ini file:
-	# [local]
-	# LUNA_PATH = /Users/keil/datasets/LUNA16/
-	# CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
-	# IMG_PATH = /Users/keil/datasets/LUNA16/patches/
-	# [remote]
-	# # - when we move to AWS
-
-
 #### ---- Global Vars ---- ####
 LUNA_PATH = config.get('local', 'LUNA_PATH')
 CSV_PATH = config.get('local', 'CSV_PATH')
@@ -185,7 +176,7 @@ def main():
 				write_to_csv(csvwriter,seriesuid,class_id,origin,center,diam,ct_img_dim) #write 12 cols.
 
 
-	print("All Images Processed and Metadata written to csv. Thank you patch again!")
+	print("All Images Processed and Metadata written to csv.")
 	print('\a')
 
 if __name__ == '__main__':

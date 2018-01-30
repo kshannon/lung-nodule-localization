@@ -34,7 +34,7 @@ parser.add_argument('-hdf5',
 					action="store_true",
 					dest="hdf5",
 					default=True,
-					help='Save processed data to hdf5)
+					help='Save processed data to hdf5')
 parser.add_argument('-hu_norm',
 					action="store_true",
 					dest="hu_norm",
@@ -96,7 +96,9 @@ PATCH_WIDTH = PATCH_DIM/2
 PATCH_HEIGHT = PATCH_DIM/2
 PATCH_DEPTH = NUM_SLICES/2
 # WORK_REMOTE = args.remote #add later w/ AWS
-DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
+#TODO add this to config file for csv file name
+DF_NODE = pd.read_csv(CSV_PATH + "candidates_V2.csv")
+# DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
 for unique_set in SUBSET:
 	FILE_LIST.extend(glob("{}{}/*.mhd".format(LUNA_PATH, unique_set))) #add subset of .mhd files
@@ -138,12 +140,13 @@ def normalize_img(img):
 							img.GetPixelIDValue())
 
 
-def make_bbox(center,width,height,depth,origin):
+def make_bbox(center,width,height,depth,origin,class_id):
 	"""
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
 	2d in the case where PATCH_DEPTH = 1
 	"""
 	# TODO:  The height and width seemed to be switched. Simplify if possible
+
 	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
 	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
 	# left = int((np.abs(center[0] - origin[0])) - PATCH_WIDTH) #DEBUG
@@ -154,6 +157,17 @@ def make_bbox(center,width,height,depth,origin):
 	bottom = np.max([0, np.abs(center[2] - origin[2]) - PATCH_DEPTH]).astype(int)
 
 	bbox = [[down, up], [left, right], [bottom, top]] #(back,abdomen - left side, right side - feet, head)
+
+	# If bbox has a origin - center - PATCH_DIM/2 that results in a 0, (rarely the case)
+	# ensure that the bbox dims are all [PATCH_DIM x PATCH_DIM x PATCH_DIM]
+	if class_id == 1:
+		if bbox[0][0] == 0:
+			bbox[0][1] = PATCH_DIM
+		elif bbox[1][0] == 0:
+			bbox[1][1] = PATCH_DIM
+		elif bbox[2][0] == 0:
+			bbox[2][1] = PATCH_DIM
+
 	return bbox
 
 
@@ -216,19 +230,32 @@ def main():
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates (in dataframe)
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
-				diam = cur_row["diameter_mm"]  # Only defined for true positives
-				if np.isnan(diam):
-					diam = 30.0  # If NaN, then just use a default of 30 mm
-
+				# diam = cur_row["diameter_mm"]  # Only defined for true positives
+				# double if cond for using candidates_with_annotations.csv files
+				# This is required because class 1s THAT ARE NOT ANNOTATED by radiologists.
+				# we do not want to use these for the classification/localization task.
+				# These ~300 class 1s were computationally generated.
+				# if class_id == 1 and np.isnan(diam):
+				# 	# Phony class 1s
+				# 	continue
+				# if diam != 0 and class_id == 1:
+				# 	# Real class 1s
+				# 	candidate_x = cur_row["coordX_annotated"]
+				# 	candidate_y = cur_row["coordY_annotated"]
+				# 	candidate_z = cur_row["coordZ_annotated"]
+				# if np.isnan(diam): #and class_id == 0:
+				# 	# Real class 0s
+				# 	diam = 30.0  # If NaN, then just use a default of 30 mm
 				candidate_x = cur_row["coordX"]
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
+
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
 				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 
 
 				#### ---- Generating the Patch ---- ####
-				bbox = make_bbox(center, width, height, slice_z, origin) #return bounding box
+				bbox = make_bbox(center, width, height, slice_z, origin, class_id) #return bounding box
 				patch = img_array[
 					bbox[0][0]:bbox[0][1],
 					bbox[1][0]:bbox[1][1],
@@ -281,16 +308,7 @@ def main():
 						print("seriesUID: " + str(seriesuid))
 						print("------------------------")
 					continue
-				# if class_id == 1:
-				# 		print("--- GOOD! ---")
-				# 		print("class ID: " + str(class_id))
-				# 		print("origin: " + str(origin))
-				# 		print("center: " + str(center))
-				# 		print("img array shape" + str(img_array.shape))
-				# 		print("patch shape: " + str(patch.shape[1]))
-				# 		print("bbox: " + str(bbox))
-				# 		print("seriesUID: " + str(seriesuid))
-				# 		print("------------------------")
+
 
 				#### ---- Write Data to HDF5 insert ---- ####
 				hdf5_dsets = [img_dset, class_dset, uuid_dset]
