@@ -5,6 +5,26 @@
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
 #TODO: determine if voxel edge detection is a sufficient issue to solve.
+# example patch call:
+# ./extract_patches.py -subset 202 -slices 64 -dim 64
+
+#TODO: ADD .ATTR() To each HDF5 dataset
+
+#TODO:rename 'patches' --> 'inputs' in HDF
+#TODO:rename 'classes' --> 'outputs' in HDF
+#TODO:rename 'classes' --> 'outputs' in HDF
+#TODO:rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
+#TODO: Addess the class 1 overlapping pattern  - understand it better
+
+#TODO: Fix on 64 dim patch dimensions, do padding when lower limit is 0
+
+#TODO incorporate diatance measurement info, if it is below min threshold we need to write a bool
+# value of 0 if not write a bool value of 1.
+	# for each scan if there is a 1:
+	# 	calculate distance between each 0 and 1: #get 1 centers from pandas df
+	# 	class 0 center compare again all XYZ from df,
+	# 	if distance < PATCHDIM:
+	# 		write to hdf5
 
 
 #### ---- Imports & Dependencies ---- ####
@@ -71,14 +91,15 @@ args = parser.parse_args()
 #### ---- ConfigParse Utility ---- ####
 config = ConfigParser()
 config.read('extract_patches_config.ini') #local just for now (need if - else for AWS)
-
-# Example extract_patches_config.ini file:
-	# [local]
-	# LUNA_PATH = /Users/keil/datasets/LUNA16/
-	# CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
-	# IMG_PATH = /Users/keil/datasets/LUNA16/patches/
-	# [remote]
-	# # - when we move to AWS
+	'''
+	Example extract_patches_config.ini file:
+		[local]
+		LUNA_PATH = /Users/keil/datasets/LUNA16/
+		CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
+		IMG_PATH = /Users/keil/datasets/LUNA16/patches/
+		[remote]
+		# - when we move to AWS
+	'''
 
 
 #### ---- Global Vars ---- ####
@@ -100,8 +121,13 @@ PATCH_DEPTH = NUM_SLICES/2
 DF_NODE = pd.read_csv(CSV_PATH + "candidates_V2.csv")
 # DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
 FILE_LIST = []
+SUBSET_LIST = []
 for unique_set in SUBSET:
-	FILE_LIST.extend(glob("{}{}/*.mhd".format(LUNA_PATH, unique_set))) #add subset of .mhd files
+	mhd_files = glob("{}{}/*.mhd".format(LUNA_PATH, unique_set))
+	FILE_LIST.extend(mhd_files) #add subset of .mhd files
+	subset_num = unique_set.strip('subset/') #extracting out subset number
+	for elements in mhd_files: #making sure we match each globbed mhd file to a subset num
+		SUBSET_LIST.append(int(subset_num)) #pass this list later to write subset num to HDF5
 
 
 #### ---- Helper Functions ---- ####
@@ -167,7 +193,6 @@ def make_bbox(center,width,height,depth,origin,class_id):
 			bbox[1][1] = PATCH_DIM
 		elif bbox[2][0] == 0:
 			bbox[2][1] = PATCH_DIM
-
 	return bbox
 
 
@@ -200,12 +225,13 @@ def main():
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
 		img_dset = HDF5.create_dataset('patches', (1,total_patch_dim), maxshape=(None,total_patch_dim))
 		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
-		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes)) #old one
-		print("Created HDF5 File and Three Datasets")
+		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
+		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
+		print("Created HDF5 File and Four Datasets")
 
 		#### ---- Iterating through a CT scan ---- ####
 		first_patch = True # flag for saving first img to hdf5
-		for img_file in tqdm(FILE_LIST):
+		for img_file, subset_id in tqdm(zip(FILE_LIST,SUBSET_LIST)):
 
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
@@ -311,15 +337,14 @@ def main():
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				hdf5_dsets = [img_dset, class_dset, uuid_dset]
-				hdf5_data = [patch, meta_data, seriesuid_str]
+				hdf5_dsets = [img_dset, class_dset, uuid_dset, subset_dset]
+				hdf5_data = [patch, meta_data, seriesuid_str, subset_id]
 				for dset_and_data in zip(hdf5_dsets,hdf5_data):
 					if first_patch == True:
 						write_to_hdf5(dset_and_data,first_patch=True)
 						first_patch = False
 					else:
 						write_to_hdf5(dset_and_data)
-
 
 
 	print("Number of class 1's found: " + str(count_class))
