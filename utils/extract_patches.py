@@ -9,10 +9,9 @@
 # ./extract_patches.py -subset 202 -slices 64 -dim 64
 
 #TODO: ADD .ATTR() To each HDF5 dataset
+#TODO solve the issue where all dsets get written a 0 or nothing, but patches get wrtiiten....
 
-#TODO:rename 'patches' --> 'inputs' in HDF
-#TODO:rename 'classes' --> 'outputs' in HDF
-#TODO:rename 'classes' --> 'outputs' in HDF
+
 #TODO:rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
 #TODO: Addess the class 1 overlapping pattern  - understand it better
 
@@ -91,15 +90,15 @@ args = parser.parse_args()
 #### ---- ConfigParse Utility ---- ####
 config = ConfigParser()
 config.read('extract_patches_config.ini') #local just for now (need if - else for AWS)
-	'''
-	Example extract_patches_config.ini file:
-		[local]
-		LUNA_PATH = /Users/keil/datasets/LUNA16/
-		CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
-		IMG_PATH = /Users/keil/datasets/LUNA16/patches/
-		[remote]
-		# - when we move to AWS
-	'''
+'''
+Example extract_patches_config.ini file:
+	[local]
+	LUNA_PATH = /Users/keil/datasets/LUNA16/
+	CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
+	IMG_PATH = /Users/keil/datasets/LUNA16/patches/
+	[remote]
+	# - when we move to AWS
+'''
 
 
 #### ---- Global Vars ---- ####
@@ -200,6 +199,7 @@ def write_to_hdf5(dset_and_data,first_patch=False):
 	"""Accept zipped hdf5 dataset obj and numpy data, write data to dataset"""
 	dset = dset_and_data[0] #hdf5 dataset obj
 	data = dset_and_data[1] #1D numpy hdf5 writable data
+
 	if first_patch == True:
 		dset[:] = data #set the whole, empty, hdf5 dset = data
 		return
@@ -223,8 +223,9 @@ def main():
 	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
-		img_dset = HDF5.create_dataset('patches', (1,total_patch_dim), maxshape=(None,total_patch_dim))
-		class_dset = HDF5.create_dataset('classes', (1,4), maxshape=(None,4), dtype=float)
+		patch_dset = HDF5.create_dataset('inputs', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
+		class_dset = HDF5.create_dataset('outputs', (1,1), maxshape=(None,1), dtype=int) #classes = outputs
+		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
 		print("Created HDF5 File and Four Datasets")
@@ -304,7 +305,7 @@ def main():
 					patch = normalizePlanes(patch) #normalize patch to HU units
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
 				# Flatten class, and x,y,z coords into vector for storage
-				meta_data = np.array([float(class_id),candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+				centroid_data = np.array([candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
 				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
 
 				## -- DEBUG -- ##
@@ -337,14 +338,15 @@ def main():
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				hdf5_dsets = [img_dset, class_dset, uuid_dset, subset_dset]
-				hdf5_data = [patch, meta_data, seriesuid_str, subset_id]
+				hdf5_dsets = [patch_dset, class_dset, uuid_dset, subset_dset, centroid_dset]
+				hdf5_data = [patch, class_id, seriesuid_str, subset_id, centroid_data]
+
 				for dset_and_data in zip(hdf5_dsets,hdf5_data):
 					if first_patch == True:
 						write_to_hdf5(dset_and_data,first_patch=True)
-						first_patch = False
 					else:
 						write_to_hdf5(dset_and_data)
+				first_patch = False
 
 
 	print("Number of class 1's found: " + str(count_class))
