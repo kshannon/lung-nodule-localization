@@ -10,7 +10,6 @@
 #TODO: rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
 
 
-
 #### ---- Imports & Dependencies ---- ####
 import sys
 import os
@@ -127,7 +126,6 @@ def normalizePlanes(npzarray):
 	npzarray[npzarray<0] = 0.
 	return npzarray
 
-
 def normalize_img(img):
 	"""
 	Sets the MHD image to be approximately 1.0 mm voxel size
@@ -150,7 +148,6 @@ def normalize_img(img):
 							0.0,
 							img.GetPixelIDValue())
 
-
 def make_bbox(center,width,height,depth,origin,class_id):
 	"""
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
@@ -171,7 +168,7 @@ def make_bbox(center,width,height,depth,origin,class_id):
 
 	# If bbox has a origin - center - PATCH_DIM/2 that results in a 0, (rarely the case)
 	# ensure that the bbox dims are all [PATCH_DIM x PATCH_DIM x PATCH_DIM]
-	if class_id == 1:
+	if class_id == 1: # Only catching class 1s for bbox issue!!!
 		if bbox[0][0] == 0:
 			bbox[0][1] = PATCH_DIM
 		elif bbox[1][0] == 0:
@@ -180,6 +177,34 @@ def make_bbox(center,width,height,depth,origin,class_id):
 			bbox[2][1] = PATCH_DIM
 	return bbox
 
+def downsample_class_0(df):
+	"""
+	Returns a pd.DataFrame where class 0s that collide with class 1s
+	have been removed based on a distance measurement threshold.
+	Threshold = PATCH_DIM/2
+	"""
+	idx_to_remove = []
+	df.reset_index(inplace=True)
+	if 1 in df['class'].tolist(): #check series ID for a positive nodule
+		df_class_1 = df[df["class"] == 1].copy(deep=True)
+		ones_coords = df_class_1[["coordX", "coordY", "coordZ"]].values
+		for idx, row in df.iterrows():
+			#check for a class 1
+			if row['class'] == 1:
+				continue
+			#set vars for calculation
+			zero_coord = (row['coordX'],row['coordY'],row['coordZ'])
+			for one_coord in ones_coords:
+				dst = distance.euclidean(zero_coord,one_coord)
+				if dst <= PATCH_DIM/2: #follow this heuristic for downsampling class 0
+					idx_to_remove.append(idx)
+	else:
+		return df
+
+	idx_to_remove = list(set(idx_to_remove))
+	df = df.drop(df.index[idx_to_remove])
+	df.reset_index(inplace=True)
+	return df
 
 def write_to_hdf5(dset_and_data,first_patch=False):
 	"""Accept zipped hdf5 dataset obj and numpy data, write data to dataset"""
@@ -197,6 +222,12 @@ def write_to_hdf5(dset_and_data,first_patch=False):
 def save_img():
 	#TODO
 	pass
+	# imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
+	# 		class_id,
+	# 		seriesuid,
+	# 		candidate_x,
+	# 		candidate_y,
+	# 		candidate_z), patch)
 
 
 #### ---- Process CT Scans and extract Patches (the pipeline) ---- ####
@@ -205,7 +236,6 @@ def main():
 	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
 	Normalize the imgs, create mini patches and write them to the hdf5 file system
 	"""
-	count_class = 0
 	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'dim_patches.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
@@ -214,7 +244,7 @@ def main():
 		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
-		print("Created HDF5 File and Four Datasets")
+		print("Successfully initiated the HDF5 file. Ready to recieve data!")
 
 		#### ---- Iterating through a CT scan ---- ####
 		first_patch = True # flag for saving first img to hdf5
@@ -224,29 +254,8 @@ def main():
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
 
-			#### ---- Downsampling Class 0s via distance measurement with class 1 ---- ####
-			# calculate distances between all class 1s (if exeist) and class 0s
-			# remove any 0s if they fall in the PATCH_DIM threshold
-			class_0_to_remove = []
-			mini_df.reset_index(inplace=True)
-			if 1 in mini_df['class'].tolist(): #check series ID for a positive nodule
-				df_class_1 = mini_df[mini_df["class"] == 1].copy(deep=True)
-				ones_coords = df_class_1[["coordX", "coordY", "coordZ"]].values
-				for idx, row in mini_df.iterrows():
-					#check for a class 1
-					if row['class'] == 1:
-						continue
-					#set vars for calculation
-					zero_coord = (row['coordX'],row['coordY'],row['coordZ'])
-					for one_coord in ones_coords:
-						zero_coord
-						dst = distance.euclidean(zero_coord,one_coord)
-						if dst <= PATCH_DIM/2: #follow this heuristic for downsampling class 0
-							class_0_to_remove.append(idx)
-
-			class_0_to_remove = list(set(class_0_to_remove))
-			mini_df = mini_df.drop(mini_df.index[class_0_to_remove])
-			mini_df.reset_index(inplace=True)
+			#### ---- Downsampling Class 0s ---- ####
+			mini_df = downsample_class_0(mini_df)
 
 			# Load the CT scan (3D .mhd file)
 			# Numpy is z,y,x and SimpleITK is x,y,z -- (note the ordering of dimesions)
@@ -267,31 +276,12 @@ def main():
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates (in dataframe)
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
-				# diam = cur_row["diameter_mm"]  # Only defined for true positives
-				# double if cond for using candidates_with_annotations.csv files
-				# This is required because class 1s THAT ARE NOT ANNOTATED by radiologists.
-				# we do not want to use these for the classification/localization task.
-				# These ~300 class 1s were computationally generated.
-				# if class_id == 1 and np.isnan(diam):
-				# 	# Phony class 1s
-				# 	continue
-				# if diam != 0 and class_id == 1:
-				# 	# Real class 1s
-				# 	candidate_x = cur_row["coordX_annotated"]
-				# 	candidate_y = cur_row["coordY_annotated"]
-				# 	candidate_z = cur_row["coordZ_annotated"]
-				# if np.isnan(diam): #and class_id == 0:
-				# 	# Real class 0s
-				# 	diam = 30.0  # If NaN, then just use a default of 30 mm
 				candidate_x = cur_row["coordX"]
 				candidate_y = cur_row["coordY"]
 				candidate_z = cur_row["coordZ"]
-
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
-				#TODO ask tony/research why we are subtracting ct scan origin from ROI centert, looks like stnd norm
 
-
-				#### ---- Generating the Patch ---- ####
+				#### ---- Generating the 2d/2.5d/3d Patch ---- ####
 				bbox = make_bbox(center, width, height, slice_z, origin, class_id) #return bounding box
 				patch = img_array[
 					bbox[0][0]:bbox[0][1],
@@ -299,75 +289,22 @@ def main():
 					bbox[2][0]:bbox[2][1]]
 
 
-
-				# if patch.shape[0] != PATCH_DIM and class_id == 1:
-				# 	print('######################')
-				# 	print(patch.shape[0])
-				# 	diff = int(PATCH_DIM - patch.shape[0])
-				# 	# zeros = np.zeros(diff)
-				# 	# patch[0] = np.concatenate(patch[0], zeros)
-                #
-				# 	print(patch[0])
-				# 	print(type(patch[0]))
-                #
-				# 	np.pad(patch[0], [(0, diff), (0, 0)], mode="constant", constant_values=0)
-				# 	print(patch.shape[0])
-				# 	print('######################')
-
-				# if patch.shape[1] != PATCH_DIM:
-                #
-				# if patch.shape[2] != PATCH_DIM:
-
-
 				#### ---- Writing patch.png to patches/ ---- ####
 				#TODO 3d --> 2d and save img
 				if SAVE_IMG: # only if -img flag is passed
-					imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
-							class_id,
-							seriesuid,
-							candidate_x,
-							candidate_y,
-							candidate_z), patch)
+					save_img(patch)
 
-
+				#### ---- Perform Hounsfield Normlization ---- ####
 				if HU_NORM:
 					patch = normalizePlanes(patch) #normalize patch to HU units
 
 
 				#### ---- Prepare Data for HDF5 insert ---- ####
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
-				# Flatten class, and x,y,z coords into vector for storage
+				if patch.shape[1] != total_patch_dim: # Catch any class 0 bbox issues and pass them
+					continue
 				centroid_data = np.array([candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
 				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
-
-				## -- DEBUG -- ##
-				# if statement to catch patch clipping issues, uncomment to debug
-				# if patch.shape[1] == 0:
-					# print("Patch Clipped: {}".format(patch.shape))
-				# 	continue
-
-				## -- DEBUG --##
-				# Y-axis issue with bbox, possibly due to patient axial position during CT Scan
-				# More info is needed to resolve this small Data integrity issue
-				# Note this issue DOES NOT effect any class 1 Pathes. Therefore we skip these for now.
-				# Recommend to confirm this hypothesis for scan w/ many class 1s
-				# Suggest this scan:
-				if patch.shape[1] != total_patch_dim and patch.shape[1] != 0:
-				# 	# print("--- Bad Actor Found! ---")
-				# 	# print("class ID: " + str(class_id))
-					count_class += int(class_id)
-					if class_id == 1:
-						continue
-						print("--- Bad Actor Found! ---")
-						print("class ID: " + str(class_id))
-						print("origin: " + str(origin))
-						print("center: " + str(center))
-						print("img array shape" + str(img_array.shape))
-						print("patch shape: " + str(patch.shape[1]))
-						print("bbox: " + str(bbox))
-						print("seriesUID: " + str(seriesuid))
-						print("------------------------")
-					continue
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
@@ -382,8 +319,7 @@ def main():
 				first_patch = False
 
 
-	print("Number of class 1's found: " + str(count_class))
-	print("All Images Processed and Patches written to HDF5. Thank you patch again!")
+	print("All CT Scans Processed and Individual Patches written to HDF5!")
 	print('\a')
 
 if __name__ == '__main__':
