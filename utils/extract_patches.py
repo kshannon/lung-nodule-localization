@@ -7,18 +7,8 @@
 # example patch call:
 # ./extract_patches.py -subset 202 -slices 64 -dim 64
 
-#TODO: determine if voxel edge detection is a sufficient issue to solve.
-#TODO: ADD .ATTR() To each HDF5 dataset
 #TODO: rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
-#TODO: Addess the class 1 overlapping pattern  - understand it better
-#TODO: Fix on 64 dim patch dimensions, do padding when lower limit is 0
-#TODO: incorporate diatance measurement info, if it is below min threshold we need to write a bool
-# value of 0 if not write a bool value of 1.
-	# for each scan if there is a 1:
-	# 	calculate distance between each 0 and 1: #get 1 centers from pandas df
-	# 	class 0 center compare again all XYZ from df,
-	# 	if distance < PATCHDIM:
-	# 		write to hdf5
+
 
 
 #### ---- Imports & Dependencies ---- ####
@@ -267,7 +257,7 @@ def main():
 
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
-			img_array = np.pad(img_array, int(PATCH_DIM/2), mode="constant", constant_values=0) #0 padding 3d array for patch clipping issue
+			img_array = np.pad(img_array, int(PATCH_DIM), mode="minimum")#, constant_values=0) #0 padding 3d array for patch clipping issue
 			slice_z, height, width = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
@@ -309,6 +299,26 @@ def main():
 					bbox[2][0]:bbox[2][1]]
 
 
+
+				# if patch.shape[0] != PATCH_DIM and class_id == 1:
+				# 	print('######################')
+				# 	print(patch.shape[0])
+				# 	diff = int(PATCH_DIM - patch.shape[0])
+				# 	# zeros = np.zeros(diff)
+				# 	# patch[0] = np.concatenate(patch[0], zeros)
+                #
+				# 	print(patch[0])
+				# 	print(type(patch[0]))
+                #
+				# 	np.pad(patch[0], [(0, diff), (0, 0)], mode="constant", constant_values=0)
+				# 	print(patch.shape[0])
+				# 	print('######################')
+
+				# if patch.shape[1] != PATCH_DIM:
+                #
+				# if patch.shape[2] != PATCH_DIM:
+
+
 				#### ---- Writing patch.png to patches/ ---- ####
 				#TODO 3d --> 2d and save img
 				if SAVE_IMG: # only if -img flag is passed
@@ -320,9 +330,11 @@ def main():
 							candidate_z), patch)
 
 
-				#### ---- Prepare Data for HDF5 insert ---- ####
 				if HU_NORM:
 					patch = normalizePlanes(patch) #normalize patch to HU units
+
+
+				#### ---- Prepare Data for HDF5 insert ---- ####
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
 				# Flatten class, and x,y,z coords into vector for storage
 				centroid_data = np.array([candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
@@ -345,6 +357,7 @@ def main():
 				# 	# print("class ID: " + str(class_id))
 					count_class += int(class_id)
 					if class_id == 1:
+						continue
 						print("--- Bad Actor Found! ---")
 						print("class ID: " + str(class_id))
 						print("origin: " + str(origin))
