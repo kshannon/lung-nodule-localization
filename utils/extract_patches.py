@@ -4,20 +4,15 @@
 # made their code publically availble, parts of which we are using in this script.
 # https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
 
-#TODO: determine if voxel edge detection is a sufficient issue to solve.
 # example patch call:
 # ./extract_patches.py -subset 202 -slices 64 -dim 64
 
+#TODO: determine if voxel edge detection is a sufficient issue to solve.
 #TODO: ADD .ATTR() To each HDF5 dataset
-#TODO solve the issue where all dsets get written a 0 or nothing, but patches get wrtiiten....
-
-
-#TODO:rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
+#TODO: rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
 #TODO: Addess the class 1 overlapping pattern  - understand it better
-
 #TODO: Fix on 64 dim patch dimensions, do padding when lower limit is 0
-
-#TODO incorporate diatance measurement info, if it is below min threshold we need to write a bool
+#TODO: incorporate diatance measurement info, if it is below min threshold we need to write a bool
 # value of 0 if not write a bool value of 1.
 	# for each scan if there is a 1:
 	# 	calculate distance between each 0 and 1: #get 1 centers from pandas df
@@ -40,6 +35,7 @@ import h5py
 import pandas as pd
 import numpy as np
 from scipy.misc import imsave # conda install Pillow or PIL
+from scipy.spatial import distance
 
 
 #### ---- Argparse Utility ---- ####
@@ -237,6 +233,30 @@ def main():
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
+
+			#### ---- Downsampling Class 0s via distance measurement with class 1 ---- ####
+			# calculate distances between all class 1s (if exeist) and class 0s
+			# remove any 0s if they fall in the PATCH_DIM threshold
+			class_0_to_remove = []
+			mini_df.reset_index(inplace=True)
+			if 1 in mini_df['class'].tolist(): #check series ID for a positive nodule
+				df_class_1 = mini_df[mini_df["class"] == 1].copy(deep=True)
+				ones_coords = df_class_1[["coordX", "coordY", "coordZ"]].values
+				for idx, row in mini_df.iterrows():
+					#check for a class 1
+					if row['class'] == 1:
+						continue
+					#set vars for calculation
+					zero_coord = (row['coordX'],row['coordY'],row['coordZ'])
+					for one_coord in ones_coords:
+						zero_coord
+						dst = distance.euclidean(zero_coord,one_coord)
+						if dst <= PATCH_DIM/2: #follow this heuristic for downsampling class 0
+							class_0_to_remove.append(idx)
+
+			class_0_to_remove = list(set(class_0_to_remove))
+			mini_df = mini_df.drop(mini_df.index[class_0_to_remove])
+			mini_df.reset_index(inplace=True)
 
 			# Load the CT scan (3D .mhd file)
 			# Numpy is z,y,x and SimpleITK is x,y,z -- (note the ordering of dimesions)
