@@ -1,9 +1,5 @@
 #! /usr/bin/env python
 
-# Thanks to Jonathan Mulholland and Aaron Sander from Booz Allen Hamilton who
-# made their code publically availble, parts of which we are using in this script.
-# https://www.kaggle.com/c/data-science-bowl-2017/details/tutorial
-
 # example patch call:
 # ./extract_patches.py -subset 202 -slices 64 -dim 64
 
@@ -23,17 +19,11 @@ from tqdm import tqdm # pip install tqdm
 import h5py
 import pandas as pd
 import numpy as np
-from scipy.misc import imsave # conda install Pillow or PIL
 from scipy.spatial import distance
 
 
 #### ---- Argparse Utility ---- ####
 parser = argparse.ArgumentParser(description='Modify the patch extractor script',add_help=True)
-parser.add_argument('-img',
-					action="store_true",
-					dest="img",
-					default=False,
-					help='Save .png patches to ./patches/')
 parser.add_argument('-hdf5',
 					action="store_true",
 					dest="hdf5",
@@ -96,6 +86,7 @@ SAVE_HDF5 = args.hdf5
 HU_NORM = args.hu_norm
 PATCH_DIM = args.dim
 NUM_SLICES = args.slices
+CHANNELS = 1
 # This is really the half (width,height,depth) so window will be double these values
 PATCH_WIDTH = PATCH_DIM/2
 PATCH_HEIGHT = PATCH_DIM/2
@@ -120,7 +111,7 @@ def normalizePlanes(npzarray):
 	Normalize pixel depth into Hounsfield units (HU), between -1000 - 400 HU
 	All other HU will be masked. Then we normalize pixel values between 0 and 1.
 	"""
-	maxHU, minHU = 400., 1000.
+	maxHU, minHU = 400., -1000.
 	npzarray = (npzarray - minHU) / (maxHU - minHU)
 	npzarray[npzarray>1] = 1.
 	npzarray[npzarray<0] = 0.
@@ -153,16 +144,15 @@ def make_bbox(center,width,height,depth,origin,class_id):
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
 	2d in the case where PATCH_DEPTH = 1
 	"""
-	# TODO:  The height and width seemed to be switched. Simplify if possible
-
-	left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
-	right = np.min([width, np.abs(center[0] - origin[0]) + PATCH_WIDTH]).astype(int)
+	# left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
+	left = np.max([0, center[0] - PATCH_WIDTH]).astype(int)
+	right = np.min([width, center[0] + PATCH_WIDTH]).astype(int)
 	# left = int((np.abs(center[0] - origin[0])) - PATCH_WIDTH) #DEBUG
 	# right = int((np.abs(center[0] - origin[0])) + PATCH_WIDTH) #DEBUG
-	down = np.max([0, np.abs(center[1] - origin[1]) - PATCH_HEIGHT]).astype(int)
-	up = np.min([height, np.abs(center[1] - origin[1]) + PATCH_HEIGHT]).astype(int)
-	top = np.min([depth, np.abs(center[2] - origin[2]) + PATCH_DEPTH]).astype(int)
-	bottom = np.max([0, np.abs(center[2] - origin[2]) - PATCH_DEPTH]).astype(int)
+	down = np.max([0, center[1] - PATCH_HEIGHT]).astype(int)
+	up = np.min([height, center[1] + PATCH_HEIGHT]).astype(int)
+	top = np.min([depth, center[2] + PATCH_DEPTH]).astype(int)
+	bottom = np.max([0, center[2] - PATCH_DEPTH]).astype(int)
 
 	bbox = [[down, up], [left, right], [bottom, top]] #(back,abdomen - left side, right side - feet, head)
 
@@ -219,16 +209,6 @@ def write_to_hdf5(dset_and_data,first_patch=False):
 	dset[row, :] = data # Insert data into new row
 	return
 
-def save_img():
-	#TODO
-	pass
-	# imsave(IMG_PATH + "class_{}_uid_{}_xyz_{}_{}_{}.png".format(
-	# 		class_id,
-	# 		seriesuid,
-	# 		candidate_x,
-	# 		candidate_y,
-	# 		candidate_z), patch)
-
 
 #### ---- Process CT Scans and extract Patches (the pipeline) ---- ####
 def main():
@@ -239,14 +219,18 @@ def main():
 	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'x' + str(PATCH_DIM) + 'x' + str(NUM_SLICES) + '-patch.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
-		patch_dset = HDF5.create_dataset('inputs', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
-		class_dset = HDF5.create_dataset('outputs', (1,1), maxshape=(None,1), dtype=int) #classes = outputs
+		patch_dset = HDF5.create_dataset('input', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
+		class_dset = HDF5.create_dataset('output', (1,1), maxshape=(None,1), dtype=int) #classes = outputs
 		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
 		print("Successfully initiated the HDF5 file. Ready to recieve data!")
 
+		#add this TODO to .attr
+		HDF5['input'].attrs['lshape'] = (PATCH_DIM, PATCH_DIM, NUM_SLICES, CHANNELS) # (Height, Width, Depth)
+
 		#### ---- Iterating through a CT scan ---- ####
+		counter = 0
 		first_patch = True # flag for saving first img to hdf5
 		for img_file, subset_id in tqdm(zip(FILE_LIST,SUBSET_LIST)):
 
@@ -266,33 +250,36 @@ def main():
 
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
-			img_array = np.pad(img_array, int(PATCH_DIM), mode="minimum")#, constant_values=0) #0 padding 3d array for patch clipping issue
 			slice_z, height, width = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
+			img_array = np.pad(img_array, int(PATCH_DIM), mode="constant", constant_values=-2000)#, constant_values=0) #0 padding 3d array for patch clipping issue
 
 
 			#### ---- Iterating through a CT scan's slices ---- ####
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates (in dataframe)
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
-				candidate_x = cur_row["coordX"]
-				candidate_y = cur_row["coordY"]
-				candidate_z = cur_row["coordZ"]
+				candidate_x = cur_row["coordX"] + PATCH_DIM
+				candidate_y = cur_row["coordY"] + PATCH_DIM
+				candidate_z = cur_row["coordZ"] + PATCH_DIM
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
 
+				voxel_center = np.rint(np.abs(center / spacing - origin)).astype(int)  # candidate center in voxels
+
+
 				#### ---- Generating the 2d/2.5d/3d Patch ---- ####
-				bbox = make_bbox(center, width, height, slice_z, origin, class_id) #return bounding box
+				bbox = make_bbox(voxel_center, width, height, slice_z, origin, class_id) #return bounding box
+				# Suman and Kyle Special!!
+				# patch = img_array[
+				# 	bbox[0][0]:bbox[0][1],
+				# 	bbox[1][0]:bbox[1][1],
+				# 	bbox[2][0]:bbox[2][1]]
 				patch = img_array[
+					bbox[2][0]:bbox[2][1],
 					bbox[0][0]:bbox[0][1],
-					bbox[1][0]:bbox[1][1],
-					bbox[2][0]:bbox[2][1]]
+					bbox[1][0]:bbox[1][1]]
 
-
-				#### ---- Writing patch.png to patches/ ---- ####
-				#TODO 3d --> 2d and save img
-				if SAVE_IMG: # only if -img flag is passed
-					save_img(patch)
 
 				#### ---- Perform Hounsfield Normlization ---- ####
 				if HU_NORM:
@@ -302,6 +289,7 @@ def main():
 				#### ---- Prepare Data for HDF5 insert ---- ####
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
 				if patch.shape[1] != total_patch_dim: # Catch any class 0 bbox issues and pass them
+					counter += 1
 					continue
 				centroid_data = np.array([candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
 				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
@@ -318,7 +306,7 @@ def main():
 						write_to_hdf5(dset_and_data)
 				first_patch = False
 
-
+	print("Did not write: " + str(counter) + " patches to HDF5")
 	print("All CT Scans Processed and Individual Patches written to HDF5!")
 	print('\a')
 
