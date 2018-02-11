@@ -3,9 +3,6 @@
 # example patch call:
 # ./extract_patches.py -subset 202 -slices 64 -dim 64
 
-#TODO: rename 'patch dim' --> 'lshape' in HDF (h,w,d,ch)
-
-
 #### ---- Imports & Dependencies ---- ####
 import sys
 import os
@@ -75,19 +72,16 @@ Example extract_patches_config.ini file:
 	# - when we move to AWS
 '''
 
-
 #### ---- Global Vars ---- ####
 LUNA_PATH = config.get('local', 'LUNA_PATH')
 CSV_PATH = config.get('local', 'CSV_PATH')
 IMG_PATH = config.get('local', 'IMG_PATH')
 SUBSET = args.subset
-SAVE_IMG = args.img
 SAVE_HDF5 = args.hdf5
 HU_NORM = args.hu_norm
 PATCH_DIM = args.dim
 NUM_SLICES = args.slices
 CHANNELS = 1
-# This is really the half (width,height,depth) so window will be double these values
 PATCH_WIDTH = PATCH_DIM/2
 PATCH_HEIGHT = PATCH_DIM/2
 PATCH_DEPTH = NUM_SLICES/2
@@ -224,10 +218,8 @@ def main():
 		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
-		print("Successfully initiated the HDF5 file. Ready to recieve data!")
-
-		#add this TODO to .attr
 		HDF5['input'].attrs['lshape'] = (PATCH_DIM, PATCH_DIM, NUM_SLICES, CHANNELS) # (Height, Width, Depth)
+		print("Successfully initiated the HDF5 file. Ready to recieve data!")
 
 		#### ---- Iterating through a CT scan ---- ####
 		counter = 0
