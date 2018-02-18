@@ -152,22 +152,23 @@ def make_bbox(center,width,height,depth,origin,class_id):
 
 	# If bbox has a origin - center - PATCH_DIM/2 that results in a 0, (rarely the case)
 	# ensure that the bbox dims are all [PATCH_DIM x PATCH_DIM x PATCH_DIM]
-	if class_id == 1: # Only catching class 1s for bbox issue!!!
-		if bbox[0][0] == 0:
-			bbox[0][1] = PATCH_DIM
-		elif bbox[1][0] == 0:
-			bbox[1][1] = PATCH_DIM
-		elif bbox[2][0] == 0:
-			bbox[2][1] = PATCH_DIM
+	if bbox[0][0] == 0:
+		bbox[0][1] = PATCH_DIM
+	elif bbox[1][0] == 0:
+		bbox[1][1] = PATCH_DIM
+	elif bbox[2][0] == 0:
+		bbox[2][1] = NUM_SLICES # change to --slice dim
+
 	return bbox
 
 def downsample_class_0(df):
 	"""
 	Returns a pd.DataFrame where class 0s that collide with class 1s
-	have been removed based on a distance measurement threshold.
+	have been flagged based on a distance measurement threshold.
 	Threshold = PATCH_DIM/2
+	The flag will be written to HDF5 and let the user know not to train on these class 0s
 	"""
-	idx_to_remove = []
+	idx_to_flag = []
 	df.reset_index(inplace=True)
 	if 1 in df['class'].tolist(): #check series ID for a positive nodule
 		df_class_1 = df[df["class"] == 1].copy(deep=True)
@@ -181,13 +182,22 @@ def downsample_class_0(df):
 			for one_coord in ones_coords:
 				dst = distance.euclidean(zero_coord,one_coord)
 				if dst <= PATCH_DIM/2: #follow this heuristic for downsampling class 0
-					idx_to_remove.append(idx)
+					idx_to_flag.append(idx)
+
 	else:
 		return df
 
-	idx_to_remove = list(set(idx_to_remove))
-	df = df.drop(df.index[idx_to_remove])
-	df.reset_index(inplace=True)
+	idx_to_flag = list(set(idx_to_flag))
+	flagged_col = {}
+	for i in range(len(df)):
+		if i in idx_to_flag:
+			flagged_col[i] = 1
+		else:
+			flagged_col[i] = 0
+	no_train = pd.Series(flagged_col)
+	df['no_train'] = no_train
+	df.drop(labels=['index'], inplace=True, axis=1)
+
 	return df
 
 def write_to_hdf5(dset_and_data,first_patch=False):
@@ -215,6 +225,7 @@ def main():
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
 		patch_dset = HDF5.create_dataset('input', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
 		class_dset = HDF5.create_dataset('output', (1,1), maxshape=(None,1), dtype=int) #classes = outputs
+		notrain_dset = HDF5.create_dataset('notrain', (1,1), maxshape=(None,1), dtype=int) # test holdout
 		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
@@ -242,16 +253,17 @@ def main():
 
 			# SimpleITK keeps the origin and spacing information for the 3D image volume
 			img_array = sitk.GetArrayFromImage(itk_img) # indices are z,y,x (note the ordering of dimesions)
+			img_array = np.pad(img_array, int(PATCH_DIM), mode="constant", constant_values=-2000)#, constant_values=0) #0 padding 3d array for patch clipping issue
 			slice_z, height, width = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
-			img_array = np.pad(img_array, int(PATCH_DIM), mode="constant", constant_values=-2000)#, constant_values=0) #0 padding 3d array for patch clipping issue
 
 
 			#### ---- Iterating through a CT scan's slices ---- ####
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates (in dataframe)
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
 				class_id = cur_row["class"] #0 for false, 1 for true nodule
+				no_train = cur_row["no_train"]
 				candidate_x = cur_row["coordX"] + PATCH_DIM
 				candidate_y = cur_row["coordY"] + PATCH_DIM
 				candidate_z = cur_row["coordZ"] + PATCH_DIM
@@ -262,16 +274,12 @@ def main():
 
 				#### ---- Generating the 2d/2.5d/3d Patch ---- ####
 				bbox = make_bbox(voxel_center, width, height, slice_z, origin, class_id) #return bounding box
-				# Suman and Kyle Special!!
-				# patch = img_array[
-				# 	bbox[0][0]:bbox[0][1],
-				# 	bbox[1][0]:bbox[1][1],
-				# 	bbox[2][0]:bbox[2][1]]
 				patch = img_array[
 					bbox[2][0]:bbox[2][1],
 					bbox[0][0]:bbox[0][1],
 					bbox[1][0]:bbox[1][1]]
 
+				# DEBUG print(patch.shape) #uncomment to debug shape size being written
 
 				#### ---- Perform Hounsfield Normlization ---- ####
 				if HU_NORM:
@@ -288,8 +296,8 @@ def main():
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				hdf5_dsets = [patch_dset, class_dset, uuid_dset, subset_dset, centroid_dset]
-				hdf5_data = [patch, class_id, seriesuid_str, subset_id, centroid_data]
+				hdf5_dsets = [patch_dset, class_dset, notrain_dset, uuid_dset, subset_dset, centroid_dset]
+				hdf5_data = [patch, class_id, no_train, seriesuid_str, subset_id, centroid_data]
 
 				for dset_and_data in zip(hdf5_dsets,hdf5_data):
 					if first_patch == True:
