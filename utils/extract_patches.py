@@ -234,9 +234,10 @@ def main():
 
 		#### ---- Iterating through a CT scan ---- ####
 		counter = 0
+		scan_number = 1
 		first_patch = True # flag for saving first img to hdf5
 		for img_file, subset_id in tqdm(zip(FILE_LIST,SUBSET_LIST)):
-
+			print("Processing CT Scan: {}".format(scan_number))
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
@@ -257,6 +258,7 @@ def main():
 			slice_z, height, width = img_array.shape
 			origin = np.array(itk_img.GetOrigin())      # x,y,z  Origin in world coordinates (mm) - Not same as img_array
 			spacing = np.array(itk_img.GetSpacing())    # spacing of voxels in world coordinates (mm)
+			scan_number += 1
 
 
 			#### ---- Iterating through a CT scan's slices ---- ####
@@ -268,7 +270,6 @@ def main():
 				candidate_y = cur_row["coordY"] + PATCH_DIM
 				candidate_z = cur_row["coordZ"] + PATCH_DIM
 				center = np.array([candidate_x, candidate_y, candidate_z])   # candidate center
-
 				voxel_center = np.rint(np.abs(center / spacing - origin)).astype(int)  # candidate center in voxels
 
 
@@ -307,7 +308,7 @@ def main():
 				first_patch = False
 
 	print("Did not write: " + str(counter) + " patches to HDF5")
-	print("All CT Scans Processed and Individual Patches written to HDF5!")
+	print("All {} CT Scans Processed and Individual Patches written to HDF5!".format(scan_number))
 	print('\a')
 
 if __name__ == '__main__':
