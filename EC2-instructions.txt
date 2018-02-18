@@ -62,13 +62,57 @@ $ cat /etc/fstab.bak
 # Should see nothing from this command, means fstab changes are good
 $ sudo mount -a
 
+# Root owns your EBS, lets change that....
+$ sudo chown -R ec2-user:ec2-user ~/name-of-your-dir/
+
+-------------------------- PHASE 2 - Configure EC2 Instance, Git, and Conda --------------------------
+# for patch extractor need heavy duty zipping equipment
+$ yum-config-manager --enable epel
+$ yum install -y p7ip
+$ cp /usr/bin/7za /usr/bin/7z
+
+$ sudo yum install git
+
+# Miniconda install
+$ cd
+$ wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+$ bash Miniconda3-latest-Linux-x86_64.sh
+# follow instructions...
+$ source .bashrc # dont need to open new terminal window
+# test Miniconda
+$ conda list
+
+$ rm Miniconda3-latest-Linux-x86_64.sh
+$ cd /ucsd-capstone-git-repo/
+$ bash create_conda_env.sh # Takes ~5 min
+$ confa env list # should see 'ucsd' conda env
+
+# Get your paths...
+    # /home/ec2-user/patch-volume/csv-files
+    # /home/ec2-user/patch-volume/subsets
+
+$ touch extract_patches_config.ini
+
+
+
 -------------------------- PHASE 2 - Sync S3 to EC2 --------------------------
+# might need sudo here...
 $ aws configure
 
   AWS Access Key ID [None]: ENTER-IT
   AWS Secret Access Key [None]: ENTER-IT
   Default region name [None]: hit enter/return key
   Default output format [None]: hit enter/return key
+
+# Make sure these got saved....
+$ aws configure list
+        Name                    Value             Type    Location
+       ----                    -----             ----    --------
+    profile                <not set>             None    None
+ access_key     ****************JP4A shared-credentials-file
+ secret_key     ****************anBw shared-credentials-file
+     region                <not set>             None    None
+
 
 # Should see our AWS buckets...
 $ aws s3 ls
@@ -82,9 +126,20 @@ aws s3 cp s3://dse-cohort3-group5/LUNA16/csv-files/annotations.csv ~/test-ebs/te
 # check with ls in the dir
 # IF all is working then you are good to go!
 
+-------------------------- PHASE 3 - Transfer  files from S3 to EC2 --------------------------
+
+$ sudo aws s3 sync s3://dse-cohort3-group5/LUNA16/csv-files/ ~/patch-volume/csv-files/
+
+
 # to unmount the drive... do this before exiting!!!!
 $ sudo umount /dev/xvdb
 $ lsblk
     NAME    MAJ:MIN RM SIZE RO TYPE MOUNTPOINT
     xvda    202:0    0   8G  0 disk
     └─xvda1 202:1    0   8G  0 part /
+
+
+    -------------------------- PHASE X - SnapShot Backup & Restore --------------------------
+
+
+https://www.youtube.com/watch?v=W89C_OqlOwE
