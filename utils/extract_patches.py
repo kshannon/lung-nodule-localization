@@ -168,6 +168,7 @@ def downsample_class_0(df):
 	Threshold = PATCH_DIM/2
 	The flag will be written to HDF5 and let the user know not to train on these class 0s
 	"""
+	empty_col =  [0 for x in range(len(df))]
 	idx_to_flag = []
 	df.reset_index(inplace=True)
 	if 1 in df['class'].tolist(): #check series ID for a positive nodule
@@ -185,19 +186,19 @@ def downsample_class_0(df):
 					idx_to_flag.append(idx)
 
 	else:
+		df = df.assign(no_train = empty_col)
 		return df
 
-	idx_to_flag = list(set(idx_to_flag))
-	flagged_col = {}
-	for i in range(len(df)):
-		if i in idx_to_flag:
-			flagged_col[i] = 1
-		else:
-			flagged_col[i] = 0
-	no_train = pd.Series(flagged_col)
-	df['no_train'] = no_train
-	df.drop(labels=['index'], inplace=True, axis=1)
 
+	idx_to_flag = list(set(idx_to_flag))
+	downsample_col = []
+	for idx, i in enumerate(empty_col):
+		if idx in idx_to_flag:
+			downsample_col.append(1)
+		else:
+			downsample_col.append(0)
+
+	df = df.assign(no_train = downsample_col)
 	return df
 
 def write_to_hdf5(dset_and_data,first_patch=False):
