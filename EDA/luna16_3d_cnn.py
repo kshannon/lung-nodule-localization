@@ -1,6 +1,17 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1"  # Only use gpu #1 (0-4)
 
+# root_dir = !pwd
+# s3bucket_path = root_dir[0] + '/../s3bucket_goofys/' # remote S3 via goofys
+s3bucket_path = "/nfs/site/home/ganthony/"
+path_to_hdf5 = s3bucket_path + "64x64x3-patch.hdf5"
+
+TB_LOG_DIR = "./tb_3D_logs"
+
+import time
+# Save Keras model to this file
+CHECKPOINT_FILENAME = "./cnn_3d_64_64_3" + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+
 import tensorflow as tf
 
 import keras
@@ -12,21 +23,6 @@ keras.backend.set_session(sess)
 import numpy as np
 import h5py
 import os
-
-# root_dir = !pwd
-# s3bucket_path = root_dir[0] + '/../s3bucket_goofys/' # remote S3 via goofys
-s3bucket_path = '/nfs/site/home/ganthony/'
-path_to_hdf5 = s3bucket_path + '64x64x3-patch.hdf5'
-hdf5_file = h5py.File(path_to_hdf5, 'r') # open in read-only mode
-
-print("Valid hdf5 file in 'read' mode: " + str(hdf5_file))
-file_size = os.path.getsize(path_to_hdf5)
-print('Size of hdf5 file: {:.3f} GB'.format(file_size/2.0**30))
-
-num_rows = hdf5_file['input'].shape[0]
-print("There are {} images in the dataset.".format(num_rows))
-
-print("The datasets within the HDF5 file are:\n {}".format(list(hdf5_file.values())))
 
 def get_class_idx(hdf5_file, classid = 0):
     '''
@@ -173,52 +169,97 @@ def get_batch(hdf5_file, batch_size=50, exclude_subset=0):
 
     return imgs, classes
 
-def generate_data(hdf5_file, batch_size=50, exclude_subset=0):
+def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
     """Replaces Keras' native ImageDataGenerator."""
     """ Randomly select batch_size rows from the hdf5 file dataset """
 
+    # If validation, then get the subset
+    # If not validation (training), then get everything but the subset.
+    if validation:
+        idx_master = get_idx_for_onesubset(hdf5_file, subset)
+    else:
+        idx_master = get_idx_for_classes(hdf5_file, subset)
+
     input_shape = tuple([batch_size] + list(hdf5_file['input'].attrs['lshape']) + [1])
     input_shape = (batch_size, 3,64,64,1)
-
-    idx_master = get_idx_for_classes(hdf5_file, exclude_subset)
 
     while True:
 
         random_idx = get_random_idx(hdf5_file, idx_master, batch_size)
         imgs = hdf5_file["input"][random_idx,:]
         imgs = imgs.reshape(input_shape)
-        imgs = np.swapaxes(imgs, 1,3)
-        ## Need to augment
-        imgs = augment_data(imgs)
+        imgs = np.swapaxes(imgs, 1, 3)
+
+        if not validation:  # Training need augmentation. Validation does not.
+            ## Need to augment
+            imgs = augment_data(imgs)
 
         classes = hdf5_file["output"][random_idx, 0]
 
         yield imgs, classes
 
-input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
-batch_size = 512   # Batch size to use
-print (input_shape)
 
-from resnet3d import Resnet3DBuilder
+def get_idx_for_onesubset(hdf5_file, subset=0):
+    '''
+    Get the indices for one subset to be used in testing/validation
+    '''
 
-model = Resnet3DBuilder.build_resnet_18((64, 64, 3, 1), 1)  # (input tensor shape, number of outputs)
+    idx_subset = np.where( (hdf5_file["subsets"][:,0] == subset) )[0]
 
-tb_log = keras.callbacks.TensorBoard(log_dir='./tb_3D_logs', histogram_freq=0, batch_size=batch_size,
-                            write_graph=True,
-                            write_grads=True, write_images=True,
-                            embeddings_freq=0, embeddings_layer_names=None,
-                            embeddings_metadata=None)
+    idx = {}
+    idx[0] = np.where( (hdf5_file['output'][idx_subset,0] == 0) )[0]
+    idx[1] = np.where( (hdf5_file['output'][idx_subset,0] == 1) )[0]
 
-import time
-CHECKPOINT_FILENAME = "cnn_3d_64_64_3" + time.strftime("_%Y%m%d_%H%M%S") + "hdf5"
-checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME, verbose=1, save_best_only=True)
+    return idx
 
-model.compile(optimizer='adam',
-              loss='binary_crossentropy',
-              metrics=['accuracy'])
+#### MAIN  ######
 
-print(model.summary())
+with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 
-history = model.fit_generator(generate_data(hdf5_file, batch_size, exclude_subset=2),
-                    steps_per_epoch=num_rows//batch_size, epochs=6,
-                    callbacks=[tb_log, checkpointer])
+    print("Valid hdf5 file in 'read' mode: " + str(hdf5_file))
+    file_size = os.path.getsize(path_to_hdf5)
+    print('Size of hdf5 file: {:.3f} GB'.format(file_size/2.0**30))
+
+    num_rows = hdf5_file['input'].shape[0]
+    print("There are {} images in the dataset.".format(num_rows))
+
+    print("The datasets within the HDF5 file are:\n {}".format(list(hdf5_file.values())))
+
+    input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
+    batch_size = 512   # Batch size to use
+    print (input_shape)
+
+    from resnet3d import Resnet3DBuilder
+
+    model = Resnet3DBuilder.build_resnet_18((64, 64, 3, 1), 1)  # (input tensor shape, number of outputs)
+
+    tb_log = keras.callbacks.TensorBoard(log_dir=TB_LOG_DIR,
+                                histogram_freq=0,
+                                batch_size=batch_size,
+                                write_graph=True,
+                                write_grads=True,
+                                write_images=True,
+                                embeddings_freq=0,
+                                embeddings_layer_names=None,
+                                embeddings_metadata=None)
+
+
+    checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME,
+                                                   monitor="val_loss",
+                                                   verbose=1,
+                                                   save_best_only=True)
+
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+
+    print(model.summary())
+
+    train_generator = generate_data(hdf5_file, batch_size, subset=2, validation=False)
+    validation_generator = generate_data(hdf5_file, 64, subset=2, validation=True)
+
+    history = model.fit_generator(train_generator,
+                        steps_per_epoch=3, epochs=1, #num_rows//batch_size, epochs=6,
+                        validation_data = validation_generator,
+                        validation_steps = 3,
+                        callbacks=[tb_log, checkpointer])
