@@ -7,10 +7,12 @@ s3bucket_path = "/nfs/site/home/ganthony/"
 path_to_hdf5 = s3bucket_path + "64x64x3-patch.hdf5"
 
 TB_LOG_DIR = "./tb_3D_logs"
+HOLDOUT_SUBSET=0
+
 
 import time
 # Save Keras model to this file
-CHECKPOINT_FILENAME = "./cnn_3d_64_64_3" + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+CHECKPOINT_FILENAME = "./cnn_3d_64_64_3_HOLDOUT_{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
 
 import tensorflow as tf
 
@@ -256,11 +258,11 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     print(model.summary())
 
     validation_batch_size = 64
-    train_generator = generate_data(hdf5_file, batch_size, subset=2, validation=False)
-    validation_generator = generate_data(hdf5_file, validation_batch_size, subset=2, validation=True)
+    train_generator = generate_data(hdf5_file, batch_size, subset=HOLDOUT_SUBSET, validation=False)
+    validation_generator = generate_data(hdf5_file, validation_batch_size, subset=HOLDOUT_SUBSET, validation=True)
 
     history = model.fit_generator(train_generator,
-                        steps_per_epoch=num_rows//batch_size, epochs=6,
+                        steps_per_epoch=num_rows//batch_size, epochs=8,
                         validation_data = validation_generator,
                         validation_steps = 100,
                         callbacks=[tb_log, checkpointer])
