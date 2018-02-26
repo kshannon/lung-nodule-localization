@@ -1,18 +1,30 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="1"  # Only use gpu #1 (0-4)
 
+import argparse
+parser = argparse.ArgumentParser(description='Modify the training script',add_help=True)
+
 # root_dir = !pwd
 # s3bucket_path = root_dir[0] + '/../s3bucket_goofys/' # remote S3 via goofys
-s3bucket_path = "/nfs/site/home/ganthony/"
-path_to_hdf5 = s3bucket_path + "64x64x3-patch.hdf5"
+
+parser.add_argument("--datadir", default="/nfs/site/home/ganthony/", help="Path to data hdf5 file")
+parser.add_argument("--holdout", type=int, default=0, help="subset of data to skip during training.")
+args = parser.parse_args()
+
+data_dir = args.datadir
+HOLDOUT_SUBSET = args.holdout
+
+path_to_hdf5 = data_dir + "64x64x3-patch.hdf5"
 
 TB_LOG_DIR = "./tb_3D_logs"
-HOLDOUT_SUBSET=0
 
+print(path_to_hdf5)
 
 import time
 # Save Keras model to this file
 CHECKPOINT_FILENAME = "./cnn_3d_64_64_3_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+
+print(CHECKPOINT_FILENAME)
 
 import tensorflow as tf
 
@@ -231,8 +243,6 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
     batch_size = 512   # Batch size to use
     print (input_shape)
-
-    train_idx =
 
     from resnet3d import Resnet3DBuilder
 
