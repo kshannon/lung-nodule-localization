@@ -12,7 +12,7 @@ HOLDOUT_SUBSET=0
 
 import time
 # Save Keras model to this file
-CHECKPOINT_FILENAME = "./cnn_3d_64_64_3_HOLDOUT_{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+CHECKPOINT_FILENAME = "./cnn_3d_64_64_3_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
 
 import tensorflow as tf
 
@@ -48,6 +48,7 @@ def get_class_idx(hdf5_file, classid = 0):
     # 2. Find indices that are not excluded from training
     idx_notraining = np.where(hdf5_file["notrain"][:,0] == 1)[0]
 
+    print("get_class_idx")
     return np.setdiff1d(idx_class, idx_notraining)
 
 def remove_exclude_subset_idx(hdf5_file, idx, excluded_subset=0):
@@ -73,7 +74,7 @@ def get_idx_for_classes(hdf5_file, excluded_subset=0):
 
     return idx
 
-def get_random_idx(hdf5_file, idx, batch_size = 20):
+def get_random_idx(idx, batch_size = 20):
     '''
     Batch size needs to be even.
     This is yield a balanced set of random indices for each class.
@@ -159,7 +160,7 @@ def get_batch(hdf5_file, batch_size=50, exclude_subset=0):
 
     idx_master = get_idx_for_classes(hdf5_file, exclude_subset)
 
-    random_idx = get_random_idx(hdf5_file, idx_master, batch_size)
+    random_idx = get_random_idx(idx_master, batch_size)
     imgs = hdf5_file["input"][random_idx,:]
 
     imgs = imgs.reshape(input_shape)
@@ -187,7 +188,7 @@ def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
 
     while True:
 
-        random_idx = get_random_idx(hdf5_file, idx_master, batch_size)
+        random_idx = get_random_idx(idx_master, batch_size)
         imgs = hdf5_file["input"][random_idx,:]
         imgs = imgs.reshape(input_shape)
         imgs = np.swapaxes(imgs, 1, 3)
@@ -231,6 +232,8 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     batch_size = 512   # Batch size to use
     print (input_shape)
 
+    train_idx =
+
     from resnet3d import Resnet3DBuilder
 
     model = Resnet3DBuilder.build_resnet_18((64, 64, 3, 1), 1)  # (input tensor shape, number of outputs)
@@ -264,5 +267,5 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     history = model.fit_generator(train_generator,
                         steps_per_epoch=num_rows//batch_size, epochs=8,
                         validation_data = validation_generator,
-                        validation_steps = 100,
+                        validation_steps = 1000,
                         callbacks=[tb_log, checkpointer])
