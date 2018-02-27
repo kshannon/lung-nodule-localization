@@ -1,15 +1,17 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"  # Only use gpu #1 (0-4)
 
 import argparse
 parser = argparse.ArgumentParser(description='Modify the training script',add_help=True)
 
 # root_dir = !pwd
 # s3bucket_path = root_dir[0] + '/../s3bucket_goofys/' # remote S3 via goofys
-
+parser.add_argument("--gpuid", default=1, type=int, help="GPU to use (0-3)")
 parser.add_argument("--datadir", default="/nfs/site/home/ganthony/", help="Path to data hdf5 file")
 parser.add_argument("--holdout", type=int, default=0, help="subset of data to skip during training.")
+parser.add_argument("--batchsize", type=int, default=512, help="The batch size to use")
 args = parser.parse_args()
+
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="{}".format(args.gpuid)  # Only use gpu #1 (0-4)
 
 data_dir = args.datadir
 HOLDOUT_SUBSET = args.holdout
@@ -112,9 +114,20 @@ def img_rotate(img):
     `img` is the tensor
     '''
     shape = img.shape
+
+    if (shape[0] == shape[1]) & (shape[1] == shape[2]):
+        same_dims = 3
+    elif (shape[0] == shape[1]):
+        same_dims = 2
+    else:
+        print("ERROR: Image should be square or cubed to flip")
+
     # This will flip along n-1 axes. (If we flipped all n axes then we'd get the same result every time)
-    ax = np.random.choice(len(shape)-1,2, replace=False) # Choose randomly which axes to flip
-    return np.flip(img.swapaxes(ax[0], ax[1]), ax[0]) # Random +90 or -90 rotation
+    ax = np.random.choice(same_dims,len(shape)-2, replace=False) # Choose randomly which axes to rotate
+
+    # The flip allows the negative/positive rotation
+    amount_rot = np.random.permutation([-3,-2,-1,1,2,3])[0]
+    return np.rot90(img, amount_rot, (ax[0], ax[1])) # Random rotation
 
 def img_flip(img):
     '''
@@ -124,10 +137,8 @@ def img_flip(img):
     `img` is the tensor
     '''
     shape = img.shape
-    # This will flip along n-1 axes. (If we flipped all n axes then we'd get the same result every time)
-    ax = np.random.choice(len(shape)-1,len(shape)-2, replace=False) + 1 # Choose randomly which axes to flip
-    for i in ax:
-        img = np.flip(img, i) # Randomly flip along all but one axis
+    flip_axis = np.random.permutation([0,1])[0]
+    img = np.flip(img, flip_axis) # Flip along random axis
     return img
 
 def augment_data(imgs):
@@ -141,23 +152,20 @@ def augment_data(imgs):
         img = imgs[idx, :]
 
         if (np.random.rand() > 0.5):
-            img = img_flip(img)
 
-#         if (np.random.rand() > 0.5):
+            if (np.random.rand() > 0.5):
+                img = img_rotate(img)
 
-#             if (np.random.rand() > 0.5):
-#                 img = img_rotate(img)
+            if (np.random.rand() > 0.5):
+                img = img_flip(img)
 
-#             if (np.random.rand() > 0.5):
-#                 img = img_flip(img)
+        else:
 
-#         else:
+            if (np.random.rand() > 0.5):
+                img = img_flip(img)
 
-#             if (np.random.rand() > 0.5):
-#                 img = img_flip(img)
-
-#             if (np.random.rand() > 0.5):
-#                 img = img_rotate(img)
+            if (np.random.rand() > 0.5):
+                img = img_rotate(img)
 
         imgs[idx,:] = img
 
@@ -241,8 +249,8 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     print("The datasets within the HDF5 file are:\n {}".format(list(hdf5_file.values())))
 
     input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
-    batch_size = 512   # Batch size to use
-    print (input_shape)
+    batch_size = args.batchsize   # Batch size to use
+    print ("Input shape of tensor = {}".format(input_shape))
 
     from resnet3d import Resnet3DBuilder
 
