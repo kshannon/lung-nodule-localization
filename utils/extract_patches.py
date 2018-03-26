@@ -293,7 +293,8 @@ def main():
 				if patch.shape[1] != total_patch_dim: # Catch any class 0 bbox issues and pass them
 					counter += 1
 					continue
-				centroid_data = np.array([candidate_x,candidate_y,candidate_z]).ravel().reshape(1,-1)
+				#minor fix to subtract the PATCH_DIM from each centroid when saving to HDF5 to match candidates_V2.csv
+				centroid_data = np.array([candidate_x - PATCH_DIM,candidate_y - PATCH_DIM,candidate_z - PATCH_DIM]).ravel().reshape(1,-1)
 				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
 
 
