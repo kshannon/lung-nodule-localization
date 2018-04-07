@@ -322,7 +322,10 @@ def get_batch(hdf5_file, batch_size=50, exclude_subset=0):
 
     # diameters is a vector with the diameters of the nodules in the batch
     # For class 0, pass a diameter of 0.
-    msks = create_mask(imgs.shape, diameters)
+    #msks = create_mask(imgs.shape, diameters)
+
+    # until the code for masking is addressed, take zeros for
+    msks = np.zeros_like(imgs)
 
     classes = hdf5_file["output"][random_idx, 0]
 
