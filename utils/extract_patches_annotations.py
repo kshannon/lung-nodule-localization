@@ -26,11 +26,6 @@ parser.add_argument('-hdf5',
 					dest="hdf5",
 					default=True,
 					help='Save processed data to hdf5')
-parser.add_argument('-hu_norm',
-					action="store_true",
-					dest="hu_norm",
-					default=False,
-					help='Normalize Patch to -1000 - 400 HU')
 parser.add_argument('-slices',
 					type=int,
 					action="store",
@@ -43,11 +38,6 @@ parser.add_argument('-dim',
 					type=int,
 					default=64,
 					help='Dimension of the patch, default = 64')
-parser.add_argument('-remote',
-					action="store_true",
-					dest="remote",
-					default=False,
-					help='Use if running script remote e.g. AWS')
 
 requiredNamed = parser.add_argument_group('required named arguments')
 requiredNamed.add_argument('-subset',
@@ -68,8 +58,6 @@ Example extract_patches_config.ini file:
 	LUNA_PATH = /Users/keil/datasets/LUNA16/
 	CSV_PATH = /Users/keil/datasets/LUNA16/csv-files/
 	IMG_PATH = /Users/keil/datasets/LUNA16/patches/
-	[remote]
-	# - when we move to AWS
 '''
 
 #### ---- Global Vars ---- ####
@@ -78,7 +66,6 @@ CSV_PATH = config.get('local', 'CSV_PATH')
 IMG_PATH = config.get('local', 'IMG_PATH')
 SUBSET = args.subset
 SAVE_HDF5 = args.hdf5
-HU_NORM = args.hu_norm
 PATCH_DIM = args.dim
 NUM_SLICES = args.slices
 CHANNELS = 1
@@ -87,8 +74,7 @@ PATCH_HEIGHT = PATCH_DIM/2
 PATCH_DEPTH = NUM_SLICES/2
 # WORK_REMOTE = args.remote #add later w/ AWS
 #TODO add this to config file for csv file name
-DF_NODE = pd.read_csv(CSV_PATH + "candidates_V2.csv")
-# DF_NODE = pd.read_csv(CSV_PATH + "candidates_with_annotations.csv")
+DF_NODE = pd.read_csv(CSV_PATH + "annotations.csv")
 FILE_LIST = []
 SUBSET_LIST = []
 for unique_set in SUBSET:
@@ -138,11 +124,8 @@ def make_bbox(center,width,height,depth,origin,class_id):
 	Returns a 3d (numpy tensor) bounding box from the CT scan.
 	2d in the case where PATCH_DEPTH = 1
 	"""
-	# left = np.max([0, np.abs(center[0] - origin[0]) - PATCH_WIDTH]).astype(int)
 	left = np.max([0, center[0] - PATCH_WIDTH]).astype(int)
 	right = np.min([width, center[0] + PATCH_WIDTH]).astype(int)
-	# left = int((np.abs(center[0] - origin[0])) - PATCH_WIDTH) #DEBUG
-	# right = int((np.abs(center[0] - origin[0])) + PATCH_WIDTH) #DEBUG
 	down = np.max([0, center[1] - PATCH_HEIGHT]).astype(int)
 	up = np.min([height, center[1] + PATCH_HEIGHT]).astype(int)
 	top = np.min([depth, center[2] + PATCH_DEPTH]).astype(int)
@@ -161,45 +144,6 @@ def make_bbox(center,width,height,depth,origin,class_id):
 
 	return bbox
 
-def downsample_class_0(df):
-	"""
-	Returns a pd.DataFrame where class 0s that collide with class 1s
-	have been flagged based on a distance measurement threshold.
-	Threshold = PATCH_DIM/2
-	The flag will be written to HDF5 and let the user know not to train on these class 0s
-	"""
-	empty_col =  [0 for x in range(len(df))]
-	idx_to_flag = []
-	df.reset_index(inplace=True)
-	if 1 in df['class'].tolist(): #check series ID for a positive nodule
-		df_class_1 = df[df["class"] == 1].copy(deep=True)
-		ones_coords = df_class_1[["coordX", "coordY", "coordZ"]].values
-		for idx, row in df.iterrows():
-			#check for a class 1
-			if row['class'] == 1:
-				continue
-			#set vars for calculation
-			zero_coord = (row['coordX'],row['coordY'],row['coordZ'])
-			for one_coord in ones_coords:
-				dst = distance.euclidean(zero_coord,one_coord)
-				if dst <= PATCH_DIM/2: #follow this heuristic for downsampling class 0
-					idx_to_flag.append(idx)
-
-	else:
-		df = df.assign(no_train = empty_col)
-		return df
-
-
-	idx_to_flag = list(set(idx_to_flag))
-	downsample_col = []
-	for idx, i in enumerate(empty_col):
-		if idx in idx_to_flag:
-			downsample_col.append(1)
-		else:
-			downsample_col.append(0)
-
-	df = df.assign(no_train = downsample_col)
-	return df
 
 def write_to_hdf5(dset_and_data,first_patch=False):
 	"""Accept zipped hdf5 dataset obj and numpy data, write data to dataset"""
@@ -221,17 +165,20 @@ def main():
 	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
 	Normalize the imgs, create mini patches and write them to the hdf5 file system
 	"""
-	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'x' + str(PATCH_DIM) + 'x' + str(NUM_SLICES) + '-patch.hdf5', 'w') as HDF5:
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'x' + str(PATCH_DIM) + 'x' + str(NUM_SLICES) + '-patch-annotations.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
 		patch_dset = HDF5.create_dataset('input', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
 		class_dset = HDF5.create_dataset('output', (1,1), maxshape=(None,1), dtype=int) #classes = outputs
-		notrain_dset = HDF5.create_dataset('notrain', (1,1), maxshape=(None,1), dtype=int) # test holdout
+		diam_dset = HDF5.create_dataset('diameter', (1,1), maxshape=(None,1), dtype=float) #classes = outputs
+		# notrain_dset = HDF5.create_dataset('notrain', (1,1), maxshape=(None,1), dtype=int) # test holdout
 		centroid_dset = HDF5.create_dataset('centroid', (1,3), maxshape=(None,3), dtype=float)
 		uuid_dset = HDF5.create_dataset('uuid', (1,1), maxshape=(None,None), dtype=h5py.special_dtype(vlen=bytes))
 		subset_dset = HDF5.create_dataset('subsets', (1,1), maxshape=(None,1), dtype=int)
 		HDF5['input'].attrs['lshape'] = (PATCH_DIM, PATCH_DIM, NUM_SLICES, CHANNELS) # (Height, Width, Depth)
 		print("Successfully initiated the HDF5 file. Ready to recieve data!")
+
+
 
 		#### ---- Iterating through a CT scan ---- ####
 		counter = 0
@@ -242,9 +189,6 @@ def main():
 			base=os.path.basename(img_file)  # Strip the filename out
 			seriesuid = os.path.splitext(base)[0]  # Get the filename without the extension
 			mini_df = DF_NODE[DF_NODE["seriesuid"] == seriesuid]
-
-			#### ---- Downsampling Class 0s ---- ####
-			mini_df = downsample_class_0(mini_df)
 
 			# Load the CT scan (3D .mhd file)
 			# Numpy is z,y,x and SimpleITK is x,y,z -- (note the ordering of dimesions)
@@ -265,8 +209,8 @@ def main():
 			#### ---- Iterating through a CT scan's slices ---- ####
 			for candidate_idx, cur_row in mini_df.iterrows(): # Iterate through all candidates (in dataframe)
 				# This is the real world x,y,z coordinates of possible nodule (in mm)
-				class_id = cur_row["class"] #0 for false, 1 for true nodule
-				no_train = cur_row["no_train"]
+				class_id = 1
+				annotations_diam = cur_row["diameter_mm"]
 				candidate_x = cur_row["coordX"] + PATCH_DIM
 				candidate_y = cur_row["coordY"] + PATCH_DIM
 				candidate_z = cur_row["coordZ"] + PATCH_DIM
@@ -281,13 +225,6 @@ def main():
 					bbox[0][0]:bbox[0][1],
 					bbox[1][0]:bbox[1][1]]
 
-				# DEBUG print(patch.shape) #uncomment to debug shape size being written
-
-				#### ---- Perform Hounsfield Normlization ---- ####
-				if HU_NORM:
-					patch = normalizePlanes(patch) #normalize patch to HU units
-
-
 				#### ---- Prepare Data for HDF5 insert ---- ####
 				patch = patch.ravel().reshape(1,-1) #flatten img to (1 x N)
 				if patch.shape[1] != total_patch_dim: # Catch any class 0 bbox issues and pass them
@@ -299,8 +236,8 @@ def main():
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
-				hdf5_dsets = [patch_dset, class_dset, notrain_dset, uuid_dset, subset_dset, centroid_dset]
-				hdf5_data = [patch, class_id, no_train, seriesuid_str, subset_id, centroid_data]
+				hdf5_dsets = [patch_dset, class_dset, uuid_dset, subset_dset, centroid_dset, diam_dset]
+				hdf5_data = [patch, class_id, seriesuid_str, subset_id, centroid_data, annotations_diam]
 
 				for dset_and_data in zip(hdf5_dsets,hdf5_data):
 					if first_patch == True:
