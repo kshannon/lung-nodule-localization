@@ -1,8 +1,11 @@
 # Project Specific Files & Directories
 data/
 logs/
+z_mine/
+evaluationScript/output/
 data
 logs
+z_mine
 notes.txt
 *.conf
 *.ini
