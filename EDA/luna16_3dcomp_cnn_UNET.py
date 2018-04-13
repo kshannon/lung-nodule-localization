@@ -1,3 +1,7 @@
+# example run: python luna16_3dcomp_cnn_UNET.py --gpuid 0 --datadir ~/vol/hdf5/ --holdout 0 --batchsize 16
+# python luna16_3dcomp_cnn_UNET.py --gpuid 0 --datadir ~/Users/keil/datasets/LUNA16/ --holdout 0 --batchsize 16
+# use this statement:
+# python luna16_3dcomp_cnn_UNET.py --gpuid 0 --datadir ~/datasets/LUNA16/ --holdout 0 --batchsize 16
 
 import argparse
 parser = argparse.ArgumentParser(description='Modify the training script',add_help=True)
@@ -16,13 +20,12 @@ os.environ["CUDA_VISIBLE_DEVICES"]="{}".format(args.gpuid)  # Only use gpu #1 (0
 data_dir = args.datadir
 HOLDOUT_SUBSET = args.holdout
 
-path_to_hdf5 = data_dir + "64x64x64-patch.hdf5"
+# path_to_hdf5 = data_dir + "64x64x64-patch.hdf5"
+path_to_hdf5 = data_dir + "64x64x64-patch-annotations.hdf5"
 
-TB_LOG_DIR = "./tb_3D_unet_logs"
+TB_LOG_DIR = "../logs/tb_3D_unet_logs"
 
 crop_shape = (48,48,48,1) # Change to correct crop shape
-
-print(path_to_hdf5)
 
 import time
 # Save Keras model to this file
@@ -147,7 +150,8 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 		model = keras.models.Model(inputs=[inputs], outputs=[pred])
 		model.summary()
 
-	return pred
+	# return pred
+		return model
 
 def get_class_idx(hdf5_file, classid = 0):
     '''
@@ -236,8 +240,7 @@ def img_rotate(img, msk):
 
     # The flip allows the negative/positive rotation
     amount_rot = np.random.permutation([-3,-2,-1,1,2,3])[0]
-    return np.rot90(img, amount_rot, (ax[0], ax[1])),
-            np.rot90(msk, amount_rot, (ax[0], ax[1]))# Random rotation
+    return np.rot90(img, amount_rot, (ax[0], ax[1])),np.rot90(msk, amount_rot, (ax[0], ax[1]))# Random rotation
 
 def img_flip(img, msk):
     '''
@@ -394,8 +397,7 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     #from resnet3d import Resnet3DBuilder
 
     #model = Resnet3DBuilder.build_resnet_18((64, 64, 64, 1), 1)  # (input tensor shape, number of outputs)
-    model = unet3D(crop_shape, use_upsampling=True, n_out=1, dropout=0.2,
-    			print_summary = False)
+    model = unet3D(crop_shape,use_upsampling=True,n_out=1,dropout=0.2,print_summary=True)
 
     tb_log = keras.callbacks.TensorBoard(log_dir=TB_LOG_DIR,
                                 histogram_freq=0,
@@ -407,13 +409,12 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
                                 embeddings_layer_names=None,
                                 embeddings_metadata=None)
 
-
     checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME,
                                                    monitor=dice_coef_loss,
                                                    verbose=1,
                                                    save_best_only=True)
-
-    # model.compile(optimizer='adam',
+    print(type(checkpointer))
+    # model.compile(optimizer='sgd', #'adam',
     #               loss='binary_crossentropy',
     #               metrics=['accuracy'])
 
@@ -421,7 +422,7 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
                   loss=dice_coef_loss,
                   metrics=['accuracy', dice_coef])
 
-    print(model.summary())
+    # print(model.summary())
 
     validation_batch_size = 64
     train_generator = generate_data(hdf5_file, batch_size, subset=HOLDOUT_SUBSET, validation=False)
