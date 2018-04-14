@@ -20,8 +20,8 @@ os.environ["CUDA_VISIBLE_DEVICES"]="{}".format(args.gpuid)  # Only use gpu #1 (0
 data_dir = args.datadir
 HOLDOUT_SUBSET = args.holdout
 
-# path_to_hdf5 = data_dir + "64x64x64-patch.hdf5"
-path_to_hdf5 = data_dir + "64x64x64-patch-annotations.hdf5"
+path_to_hdf5 = data_dir + "64x64x64-patch.hdf5"
+#path_to_hdf5 = data_dir + "64x64x64-patch-annotations.hdf5"
 
 TB_LOG_DIR = "../logs/tb_3D_unet_logs"
 
@@ -146,17 +146,18 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 	pred = keras.layers.Conv3D(name="PredictionMask", filters=n_out, kernel_size=(1, 1, 1),
 					data_format=data_format, activation="sigmoid")(conv7)
 
+	#class_pred = keras.layers.GlobalAveragePooling3D()(pred)
 	if print_summary:
 		model = keras.models.Model(inputs=[inputs], outputs=[pred])
 		model.summary()
 
 	# return pred
-		return model
+	return model
 
 def get_class_idx(hdf5_file, classid = 0):
-    '''
-    Get the indices for the class classid and valid for training
-    '''
+	'''
+	Get the indices for the class classid and valid for training
+	'''
 #     # 1. Find indices from class classid
 #     idx_class = np.where( (hdf5_file['output'][:,0] == classid) )[0]
 
@@ -169,267 +170,286 @@ def get_class_idx(hdf5_file, classid = 0):
 #     # 2. Find indices that are not excluded from training
 #     idx_notraining = np.where(hdf5_file["notrain"][:,0] == 1)[0]
 
-     # 1. Find indices from class classid
-    idx_class = np.where( (hdf5_file['output'][:,0] == classid) )[0]
+	 # 1. Find indices from class classid
+	idx_class = np.where( (hdf5_file['output'][:,0] == classid) )[0]
 
-    # 2. Find indices that are not excluded from training
-    idx_notraining = np.where(hdf5_file["notrain"][:,0] == 1)[0]
+	# 2. Find indices that are not excluded from training
+	idx_notraining = np.where(hdf5_file["notrain"][:,0] == 1)[0]
 
-    print("get_class_idx")
-    return np.setdiff1d(idx_class, idx_notraining)
+	print("get_class_idx")
+	return np.setdiff1d(idx_class, idx_notraining)
 
 def remove_exclude_subset_idx(hdf5_file, idx, excluded_subset=0):
-    '''
-    Remove indices for the subset excluded_subset
-    '''
+	'''
+	Remove indices for the subset excluded_subset
+	'''
 
-    excluded_idx = np.where(hdf5_file["subsets"][:,0] == excluded_subset)[0] # indices
+	excluded_idx = np.where(hdf5_file["subsets"][:,0] == excluded_subset)[0] # indices
 
-    return np.setdiff1d(idx, excluded_idx)  # Remove the indices of the excluded subset
+	return np.setdiff1d(idx, excluded_idx)  # Remove the indices of the excluded subset
 
 def get_idx_for_classes(hdf5_file, excluded_subset=0):
-    '''
-    Get the indices for each class but don't include indices from excluded subset
-    '''
+	'''
+	Get the indices for each class but don't include indices from excluded subset
+	'''
 
-    idx = {}
-    idx[0] = get_class_idx(hdf5_file, 0)
-    idx[1] = get_class_idx(hdf5_file, 1)
+	idx = {}
+	idx[0] = get_class_idx(hdf5_file, 0)
+	idx[1] = get_class_idx(hdf5_file, 1)
 
-    idx[0] = remove_exclude_subset_idx(hdf5_file, idx[0], excluded_subset)
-    idx[1] = remove_exclude_subset_idx(hdf5_file, idx[1], excluded_subset)
+	idx[0] = remove_exclude_subset_idx(hdf5_file, idx[0], excluded_subset)
+	idx[1] = remove_exclude_subset_idx(hdf5_file, idx[1], excluded_subset)
 
-    return idx
+	return idx
 
 def get_random_idx(idx, batch_size = 20):
-    '''
-    Batch size needs to be even.
-    This is yield a balanced set of random indices for each class.
-    '''
+	'''
+	Batch size needs to be even.
+	This is yield a balanced set of random indices for each class.
+	'''
 
-    idx0 = idx[0]
-    idx1 = idx[1]
+	idx0 = idx[0]
+	idx1 = idx[1]
 
-    # 2. Shuffle the two indices
-    np.random.shuffle(idx0)  # This shuffles in place
-    np.random.shuffle(idx1)  # This shuffles in place
+	# 2. Shuffle the two indices
+	np.random.shuffle(idx0)  # This shuffles in place
+	np.random.shuffle(idx1)  # This shuffles in place
 
-    # 3. Take half of the batch from each class
-    idx0_shuffle = idx0[0:(batch_size//2)]
-    idx1_shuffle = idx1[0:(batch_size//2)]
+	# 3. Take half of the batch from each class
+	idx0_shuffle = idx0[0:(batch_size//2)]
+	idx1_shuffle = idx1[0:(batch_size//2)]
 
-    # Need to sort final list in order to slice
-    return np.sort(np.append(idx0_shuffle, idx1_shuffle))
+	# Need to sort final list in order to slice
+	return np.sort(np.append(idx0_shuffle, idx1_shuffle))
 
 def img_rotate(img, msk):
-    '''
-    Perform a random rotation on the tensor
-    `img` is the tensor and `msk` is the mask
-    '''
-    shape = img.shape
+	'''
+	Perform a random rotation on the tensor
+	`img` is the tensor and `msk` is the mask
+	'''
+	shape = img.shape
 
-    if (shape[0] == shape[1]) & (shape[1] == shape[2]):
-        same_dims = 3
-    elif (shape[0] == shape[1]):
-        same_dims = 2
-    else:
-        print("ERROR: Image should be square or cubed to flip")
+	if (shape[0] == shape[1]) & (shape[1] == shape[2]):
+		same_dims = 3
+	elif (shape[0] == shape[1]):
+		same_dims = 2
+	else:
+		print("ERROR: Image should be square or cubed to flip")
 
-    # This will flip along n-1 axes. (If we flipped all n axes then we'd get the same result every time)
-    ax = np.random.choice(same_dims,len(shape)-2, replace=False) # Choose randomly which axes to rotate
+	# This will flip along n-1 axes. (If we flipped all n axes then we'd get the same result every time)
+	ax = np.random.choice(same_dims,len(shape)-2, replace=False) # Choose randomly which axes to rotate
 
-    # The flip allows the negative/positive rotation
-    amount_rot = np.random.permutation([-3,-2,-1,1,2,3])[0]
-    return np.rot90(img, amount_rot, (ax[0], ax[1])),np.rot90(msk, amount_rot, (ax[0], ax[1]))# Random rotation
+	# The flip allows the negative/positive rotation
+	amount_rot = np.random.permutation([-3,-2,-1,1,2,3])[0]
+	return np.rot90(img, amount_rot, (ax[0], ax[1])),np.rot90(msk, amount_rot, (ax[0], ax[1]))# Random rotation
 
 def img_flip(img, msk):
-    '''
-    Performs a random flip on the tensor.
-    If the tensor is C x H x W x D this will perform flips on two of the C, H, D dimensions
-    If the tensor is C x H x W this will perform flip on either the H or the W dimension.
-    `img` is the tensor
-    '''
-    shape = img.shape
-    flip_axis = np.random.permutation([0,1])[0]
-    img = np.flip(img, flip_axis) # Flip along random axis
-    msk = np.flip(msk, flip_axis)
-    return img, msk
+	'''
+	Performs a random flip on the tensor.
+	If the tensor is C x H x W x D this will perform flips on two of the C, H, D dimensions
+	If the tensor is C x H x W this will perform flip on either the H or the W dimension.
+	`img` is the tensor
+	'''
+	shape = img.shape
+	flip_axis = np.random.permutation([0,1])[0]
+	img = np.flip(img, flip_axis) # Flip along random axis
+	msk = np.flip(msk, flip_axis)
+	return img, msk
 
-def augment_data(imgs, msks):
-    '''
-    Performs random flips, rotations, and other operations on the image tensors.
-    '''
+def augment_data(imgs, msks,validation = False):
+	'''
+	Performs random flips, rotations, and other operations on the image tensors.
+	'''
 
-    imgs_length = imgs.shape[0]
+	imgs_length = imgs.shape[0]
+	imgs_crop = np.zeros((imgs_length, crop_shape[0],crop_shape[1],crop_shape[2],crop_shape[3]))
+	msks_crop = np.zeros_like(imgs_crop)
 
-    for idx in range(imgs_length):
-        img = imgs[idx, :]
-        msk = msks[idx, :]
+	if not validation:
+		for idx in range(imgs_length):
+			img = imgs[idx, :]
+			msk = msks[idx, :]
 
-        if (np.random.rand() > 0.5):
+			if (np.random.rand() > 0.5):
 
-            if (np.random.rand() > 0.5):
-                img, msk = img_rotate(img, msk)
+				if (np.random.rand() > 0.5):
+					img, msk = img_rotate(img, msk)
 
-            if (np.random.rand() > 0.5):
-                img, msk = img_flip(img, msk)
+				if (np.random.rand() > 0.5):
+					img, msk = img_flip(img, msk)
 
-        else:
+			else:
 
-            if (np.random.rand() > 0.5):
-                img, msk = img_flip(img, msk)
+				if (np.random.rand() > 0.5):
+					img, msk = img_flip(img, msk)
 
-            if (np.random.rand() > 0.5):
-                img, msk = img_rotate(img, msk)
+				if (np.random.rand() > 0.5):
+					img, msk = img_rotate(img, msk)
 
-        img, msk = crop_img(img, msk)
+			img, msk = crop_img(img, msk, False)
 
-        imgs[idx,:] = img
-        msks[idx, :] = msk
+			imgs_crop[idx,:] = img
+			msks_crop[idx, :] = msk
 
-    return imgs, msks
+		else:
+			for idx in range(imgs_length):
+				img = imgs[idx, :]
+				msk = msks[idx, :]
+				img, msk = crop_img(img, msk, True)
+				imgs_crop[idx,:] = img
+				msks_crop[idx, :] = msk
 
-def crop_img(img, msk):
-    """
-    Peforms random crop with offset
-    """
+	return imgs_crop, msks_crop
 
-    offsetX = np.rand.randint(0,64-crop_shape[0]-1)
-    offsetY = np.rand.randint(0,64-crop_shape[1]-1)
-    offsetZ = np.rand.randint(0,64-crop_shape[2]-1)
-    start_idxX = offsetX
-    start_idxY = offsetY
-    start_idxZ = offsetZ
-    stop_idxX = crop_shape[0] + offsetX
-    stop_idxY = crop_shape[1] + offsetY
-    stop_idxZ = crop_shape[2] + offsetZ
-    img = img[start_idxX:stop_idxX, start_idxY:stop_idxY, start_idxZ:stop_idxZ, :]
-    msk = msk[start_idxX:stop_idxX, start_idxY:stop_idxY, start_idxZ:stop_idxZ, :]
+def crop_img(img, msk,valid_flag = False):
+	"""
+	Peforms random crop with offset
+	"""
+	if(valid_flag == False):
+		offsetX = np.random.randint(0,64-crop_shape[0]-1)
+		offsetY = np.random.randint(0,64-crop_shape[1]-1)
+		offsetZ = np.random.randint(0,64-crop_shape[2]-1)
+	else:
+		offsetX = 8 # (64-48)/2
+		offsetY = 8
+		offsetZ = 8
+	start_idxX = offsetX
+	start_idxY = offsetY
+	start_idxZ = offsetZ
+	stop_idxX = crop_shape[0] + offsetX
+	stop_idxY = crop_shape[1] + offsetY
+	stop_idxZ = crop_shape[2] + offsetZ
+	img = img[start_idxX:stop_idxX, start_idxY:stop_idxY, start_idxZ:stop_idxZ, :]
+	msk = msk[start_idxX:stop_idxX, start_idxY:stop_idxY, start_idxZ:stop_idxZ, :]
 
-    return img, msk
-
+	return img, msk
 def get_batch(hdf5_file, batch_size=50, exclude_subset=0):
-    """Replaces Keras' native ImageDataGenerator."""
-    """ Randomly select batch_size rows from the hdf5 file dataset """
+	"""Replaces Keras' native ImageDataGenerator."""
+	""" Randomly select batch_size rows from the hdf5 file dataset """
 
-    #input_shape = tuple([batch_size] + list(hdf5_file['input'].attrs['lshape']) + [1])
-    input_shape = (batch_size, 64,64,64,1)
+	#input_shape = tuple([batch_size] + list(hdf5_file['input'].attrs['lshape']) + [1])
+	input_shape = (batch_size, 64,64,64,1)
 
-    idx_master = get_idx_for_classes(hdf5_file, exclude_subset)
+	idx_master = get_idx_for_classes(hdf5_file, exclude_subset)
 
-    random_idx = get_random_idx(idx_master, batch_size)
-    imgs = hdf5_file["input"][random_idx,:]
+	random_idx = get_random_idx(idx_master, batch_size)
+	imgs = hdf5_file["input"][random_idx,:]
 
-    imgs = imgs.reshape(input_shape)
-    imgs = np.swapaxes(imgs, 1,3)
+	imgs = imgs.reshape(input_shape)
+	imgs = np.swapaxes(imgs, 1,3)
 
-    # diameters is a vector with the diameters of the nodules in the batch
-    # For class 0, pass a diameter of 0.
-    #msks = create_mask(imgs.shape, diameters)
+	# diameters is a vector with the diameters of the nodules in the batch
+	# For class 0, pass a diameter of 0.
+	#msks = create_mask(imgs.shape, diameters)
 
-    # until the code for masking is addressed, take zeros for
-    msks = np.zeros_like(imgs)
+	# until the code for masking is addressed, take zeros for
+	msks = np.zeros_like(imgs)
 
-    classes = hdf5_file["output"][random_idx, 0]
+	classes = hdf5_file["output"][random_idx, 0]
 
-    return imgs, msks, classes
+	return imgs, msks, classes
 
 def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
-    """Replaces Keras' native ImageDataGenerator."""
-    """ Randomly select batch_size rows from the hdf5 file dataset """
+	"""Replaces Keras' native ImageDataGenerator."""
+	""" Randomly select batch_size rows from the hdf5 file dataset """
 
-    # If validation, then get the subset
-    # If not validation (training), then get everything but the subset.
-    if validation:
-        idx_master = get_idx_for_onesubset(hdf5_file, subset)
-    else:
-        idx_master = get_idx_for_classes(hdf5_file, subset)
+	# If validation, then get the subset
+	# If not validation (training), then get everything but the subset.
+	if validation:
+		idx_master = get_idx_for_onesubset(hdf5_file, subset)
+	else:
+		idx_master = get_idx_for_classes(hdf5_file, subset)
 
-    input_shape = tuple([batch_size] + list(hdf5_file['input'].attrs['lshape']) + [1])
-    input_shape = (batch_size, 64,64,64,1) # check this input shape for 3D also check if above can be taken out and replace with this line
+	input_shape = tuple([batch_size] + list(hdf5_file['input'].attrs['lshape']) + [1])
+	input_shape = (batch_size, 64,64,64,1) # check this input shape for 3D also check if above can be taken out and replace with this line
 
-    while True:
+	while True:
 
-        random_idx = get_random_idx(idx_master, batch_size)
-        imgs = hdf5_file["input"][random_idx,:]
-        imgs = imgs.reshape(input_shape)
-        imgs = np.swapaxes(imgs, 1, 3)
+		random_idx = get_random_idx(idx_master, batch_size)
+		imgs = hdf5_file["input"][random_idx,:]
+		imgs = imgs.reshape(input_shape)
+		imgs = np.swapaxes(imgs, 1, 3)
+		msks= np.zeros_like(imgs)
 
-        if not validation:  # Training need augmentation. Validation does not.
-            ## Need to augment
-            imgs, msks = augment_data(imgs, msks)
+		if not validation:  # Training need augmentation. Validation does not.
+			## Need to augment
+			imgs, msks = augment_data(imgs, msks, False)
 
-        classes = hdf5_file["output"][random_idx, 0]
+		else: # but requires cropping to be of same size as model expects input of 48x48x48
+			imgs, msks = augment_data(imgs, msks, True)
 
-        yield imgs, msks  #, classes
+		classes = hdf5_file["output"][random_idx, 0]
+
+		yield imgs, msks #(msks, classes)
 
 
 def get_idx_for_onesubset(hdf5_file, subset=0):
-    '''
-    Get the indices for one subset to be used in testing/validation
-    '''
+	'''
+	Get the indices for one subset to be used in testing/validation
+	'''
 
-    idx_subset = np.where( (hdf5_file["subsets"][:,0] == subset) )[0]
+	idx_subset = np.where( (hdf5_file["subsets"][:,0] == subset) )[0]
 
-    idx = {}
-    idx[0] = np.where( (hdf5_file['output'][idx_subset,0] == 0) )[0]
-    idx[1] = np.where( (hdf5_file['output'][idx_subset,0] == 1) )[0]
+	idx = {}
+	idx[0] = np.where( (hdf5_file['output'][idx_subset,0] == 0) )[0]
+	idx[1] = np.where( (hdf5_file['output'][idx_subset,0] == 1) )[0]
 
-    return idx
+	return idx
 
 #### MAIN  ######
 
 with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 
-    print("Valid hdf5 file in 'read' mode: " + str(hdf5_file))
-    file_size = os.path.getsize(path_to_hdf5)
-    print('Size of hdf5 file: {:.3f} GB'.format(file_size/2.0**30))
+	print("Valid hdf5 file in 'read' mode: " + str(hdf5_file))
+	file_size = os.path.getsize(path_to_hdf5)
+	print('Size of hdf5 file: {:.3f} GB'.format(file_size/2.0**30))
 
-    num_rows = hdf5_file['input'].shape[0]
-    print("There are {} images in the dataset.".format(num_rows))
+	num_rows = hdf5_file['input'].shape[0]
+	print("There are {} images in the dataset.".format(num_rows))
 
-    print("The datasets within the HDF5 file are:\n {}".format(list(hdf5_file.values())))
+	print("The datasets within the HDF5 file are:\n {}".format(list(hdf5_file.values())))
 
-    input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
-    batch_size = args.batchsize   # Batch size to use
-    print ("Input shape of tensor = {}".format(input_shape))
+	input_shape = tuple(list(hdf5_file["input"].attrs["lshape"]))
+	batch_size = args.batchsize   # Batch size to use
+	print ("Input shape of tensor = {}".format(input_shape))
 
-    #from resnet3d import Resnet3DBuilder
+	#from resnet3d import Resnet3DBuilder
 
-    #model = Resnet3DBuilder.build_resnet_18((64, 64, 64, 1), 1)  # (input tensor shape, number of outputs)
-    model = unet3D(crop_shape,use_upsampling=True,n_out=1,dropout=0.2,print_summary=True)
+	#model = Resnet3DBuilder.build_resnet_18((64, 64, 64, 1), 1)  # (input tensor shape, number of outputs)
+	model = unet3D(crop_shape,use_upsampling=True,n_out=1,dropout=0.2,print_summary=True)
 
-    tb_log = keras.callbacks.TensorBoard(log_dir=TB_LOG_DIR,
-                                histogram_freq=0,
-                                batch_size=batch_size,
-                                write_graph=True,
-                                write_grads=True,
-                                write_images=True,
-                                embeddings_freq=0,
-                                embeddings_layer_names=None,
-                                embeddings_metadata=None)
+	tb_log = keras.callbacks.TensorBoard(log_dir=TB_LOG_DIR,
+								histogram_freq=0,
+								batch_size=batch_size,
+								write_graph=True,
+								write_grads=True,
+								write_images=True,
+								embeddings_freq=0,
+								embeddings_layer_names=None,
+								embeddings_metadata=None)
 
-    checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME,
-                                                   monitor=dice_coef_loss,
-                                                   verbose=1,
-                                                   save_best_only=True)
-    print(type(checkpointer))
-    # model.compile(optimizer='sgd', #'adam',
-    #               loss='binary_crossentropy',
-    #               metrics=['accuracy'])
+	checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME,
+												   #monitor=dice_coef_loss,
+												   verbose=1)
+												   #,save_best_only=True)
+	print(type(checkpointer))
+	# model.compile(optimizer='sgd', #'adam',
+	#               loss='binary_crossentropy',
+	#               metrics=['accuracy'])
 
-    model.compile(optimizer='adam',
-                  loss=dice_coef_loss,
-                  metrics=['accuracy', dice_coef])
+	model.compile(optimizer='adam',
+				  loss=dice_coef_loss,
+				  metrics=[dice_coef])
 
-    # print(model.summary())
+	# print(model.summary())
 
-    validation_batch_size = 64
-    train_generator = generate_data(hdf5_file, batch_size, subset=HOLDOUT_SUBSET, validation=False)
-    validation_generator = generate_data(hdf5_file, validation_batch_size, subset=HOLDOUT_SUBSET, validation=True)
+	validation_batch_size = 16
+	train_generator = generate_data(hdf5_file, batch_size, subset=HOLDOUT_SUBSET, validation=False)
+	validation_generator = generate_data(hdf5_file, validation_batch_size, subset=HOLDOUT_SUBSET, validation=True)
 
-    history = model.fit_generator(train_generator,
-                        steps_per_epoch=num_rows//batch_size, epochs=2,
-                        validation_data = validation_generator,
-                        validation_steps = 1000,
-                        callbacks=[tb_log, checkpointer])
+	history = model.fit_generator(train_generator,
+						steps_per_epoch=1,epochs=1, # this needs to be changed to back to below actual steps per epoch and origninal epochs
+						#steps_per_epoch=num_rows//batch_size, epochs=2,
+						validation_data = validation_generator,
+						validation_steps = 1000,
+						callbacks=[tb_log, checkpointer])
