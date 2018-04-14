@@ -283,7 +283,7 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
     validation_generator = generate_data(hdf5_file, validation_batch_size, subset=HOLDOUT_SUBSET, validation=True)
 
     history = model.fit_generator(train_generator,
-                        steps_per_epoch=num_rows//batch_size, epochs=2,
+                        steps_per_epoch=num_rows//batch_size, epochs=4,
                         validation_data = validation_generator,
                         validation_steps = 1000,
                         callbacks=[tb_log, checkpointer])
