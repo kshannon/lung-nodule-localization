@@ -223,7 +223,7 @@ def main():
 	Create the hdf5 file + datasets, iterate thriough the folders DICOM imgs
 	Normalize the imgs, create mini patches and write them to the hdf5 file system
 	"""
-	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'x' + str(PATCH_DIM) + 'x' + str(NUM_SLICES) + '-patch.hdf5', 'w') as HDF5:
+	with h5py.File(LUNA_PATH + str(PATCH_DIM) + 'x' + str(PATCH_DIM) + 'x' + str(NUM_SLICES) + '-patch-withdiam.hdf5', 'w') as HDF5:
 		# Datasets for 3d patch tensors & class_id/x,y,z coords
 		total_patch_dim = PATCH_DIM * PATCH_DIM * NUM_SLICES
 		patch_dset = HDF5.create_dataset('input', (1,total_patch_dim), maxshape=(None,total_patch_dim)) #patches = inputs
@@ -310,9 +310,6 @@ def main():
 				#minor fix to subtract the PATCH_DIM from each centroid when saving to HDF5 to match candidates_V2.csv
 				centroid_data = np.array([candidate_x - PATCH_DIM,candidate_y - PATCH_DIM,candidate_z - PATCH_DIM]).ravel().reshape(1,-1)
 				seriesuid_str = np.string_(seriesuid) #set seriesuid str to numpy.bytes_ type
-
-
-
 
 
 				#### ---- Write Data to HDF5 insert ---- ####
