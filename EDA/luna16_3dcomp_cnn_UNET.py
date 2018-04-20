@@ -451,5 +451,5 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 						steps_per_epoch=1,epochs=1, # this needs to be changed to back to below actual steps per epoch and origninal epochs
 						#steps_per_epoch=num_rows//batch_size, epochs=2,
 						validation_data = validation_generator,
-						validation_steps = 1000,
+						validation_steps = 100,
 						callbacks=[tb_log, checkpointer])
