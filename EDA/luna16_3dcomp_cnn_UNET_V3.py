@@ -20,7 +20,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="{}".format(args.gpuid)  # Only use gpu #1 (0
 data_dir = args.datadir
 HOLDOUT_SUBSET = args.holdout
 
-path_to_hdf5 = data_dir + "64x64x64-patch-withdiam_test.hdf5"
+path_to_hdf5 = data_dir + "64x64x64-patch-withdiam.hdf5"
 #path_to_hdf5 = data_dir + "64x64x64-patch-annotations.hdf5"
 
 TB_LOG_DIR = "../logs/tb_3D_unet_logs"
@@ -29,7 +29,7 @@ crop_shape = (48,48,48,1) # Change to correct crop shape
 
 import time
 # Save Keras model to this file
-CHECKPOINT_FILENAME = "./cnn_3d_64_64_64_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+CHECKPOINT_FILENAME = "./cnn_3DUNET_64_64_64_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
 
 print(CHECKPOINT_FILENAME)
 
@@ -383,6 +383,7 @@ def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
 	# If not validation (training), then get everything but the subset.
 	if validation:
 		idx_master = get_idx_for_onesubset(hdf5_file, subset)
+
 	else:
 		idx_master = get_idx_for_classes(hdf5_file, subset)
 
@@ -413,7 +414,7 @@ def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
 
 		classes = hdf5_file["output"][random_idx, 0]
 
-		yield [imgs], [msks, classes] #msks #, classes
+		yield [imgs], [msks, classes]
 
 
 def get_idx_for_onesubset(hdf5_file, subset=0):
@@ -462,7 +463,8 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 								embeddings_metadata=None)
 	#print(model.metrics_names)
 	checkpointer = keras.callbacks.ModelCheckpoint(filepath=CHECKPOINT_FILENAME,
-												   monitor='val_dice_coef_loss',
+												   #monitor='val_dice_coef_loss',
+												   monitor ="val_PredictionMask_loss",
 												   mode = 'min',
 												   verbose=1,
 												   save_best_only=True)
@@ -477,6 +479,11 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 				  #loss=[dice_coef_loss,'binary_crossentropy'],
 				  loss={'PredictionMask': dice_coef_loss, 'PredictionClass': 'binary_crossentropy'}, loss_weights={'PredictionMask': 1., 'PredictionClass': 0.2},
 				  metrics={'PredictionMask':dice_coef,'PredictionClass': 'accuracy'})
+
+    # save as JSON and saving model weights
+	UNET_json_arch = model.to_json()
+	model.save('UNET_model.h5')
+	model.save_weights('UNET_weights.h5')
 
 	# print(model.summary())
 
