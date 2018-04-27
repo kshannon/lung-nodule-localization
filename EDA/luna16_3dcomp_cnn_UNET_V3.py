@@ -118,6 +118,8 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 	conv2 = keras.layers.BatchNormalization()(conv2)
 	conv2 = keras.layers.Activation('relu')(conv2)
 	conv2 = keras.layers.Conv3D(name="conv2b", filters=128, **params)(conv2)
+	conv2 = keras.layers.BatchNormalization()(conv2)
+	conv2 = keras.layers.Activation('relu')(conv2)
 	pool2 = keras.layers.MaxPooling3D(name="pool2", pool_size=(2, 2, 2))(conv2)
 
 	conv3 = keras.layers.Conv3D(name="conv3a", filters=128, **params)(pool2)
@@ -555,7 +557,7 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 						steps_per_epoch=num_rows//batch_size, epochs=1,
 						validation_data = validation_generator,
 						validation_steps = 100,
-						callbacks=[tb_log, checkpointer,WeightsSaver(model, 20, CHECKPOINT_FILENAME)])
+						callbacks=[tb_log, checkpointer, WeightsSaver(model, 20, CHECKPOINT_FILENAME)])
 
 	# save as JSON and saving model weights
 	UNET_json_arch = model.to_json()
