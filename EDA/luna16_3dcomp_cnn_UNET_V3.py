@@ -4,6 +4,7 @@
 # python luna16_3dcomp_cnn_UNET.py --gpuid 0 --datadir ~/datasets/LUNA16/ --holdout 0 --batchsize 16
 
 import argparse
+import sys
 parser = argparse.ArgumentParser(description='Modify the training script',add_help=True)
 
 # root_dir = !pwd
@@ -96,26 +97,45 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 
 	inputs = keras.layers.Input(shape=input_img, name="Input_Image")
 
-	params = dict(kernel_size=(3, 3, 3), activation="relu",
+	# Use below if wanted to use batch normalization and Relu activation separately
+	params = dict(kernel_size=(3, 3, 3), activation=None,
 				  padding="same", data_format=data_format,
 				  kernel_initializer="he_uniform")
 
+	# params = dict(kernel_size=(3, 3, 3), activation="relu",
+	# 			  padding="same", data_format=data_format,
+	# 			  kernel_initializer="he_uniform")
+
 	conv1 = keras.layers.Conv3D(name="conv1a", filters=32, **params)(inputs)
+	conv1 = keras.layers.BatchNormalization()(conv1)
+	conv1 = keras.layers.Activation('relu')(conv1)
 	conv1 = keras.layers.Conv3D(name="conv1b", filters=64, **params)(conv1)
+	conv1 = keras.layers.BatchNormalization()(conv1)
+	conv1 = keras.layers.Activation('relu')(conv1)
 	pool1 = keras.layers.MaxPooling3D(name="pool1", pool_size=(2, 2, 2))(conv1)
 
 	conv2 = keras.layers.Conv3D(name="conv2a", filters=64, **params)(pool1)
+	conv2 = keras.layers.BatchNormalization()(conv2)
+	conv2 = keras.layers.Activation('relu')(conv2)
 	conv2 = keras.layers.Conv3D(name="conv2b", filters=128, **params)(conv2)
 	pool2 = keras.layers.MaxPooling3D(name="pool2", pool_size=(2, 2, 2))(conv2)
 
 	conv3 = keras.layers.Conv3D(name="conv3a", filters=128, **params)(pool2)
+	conv3 = keras.layers.BatchNormalization()(conv3)
+	conv3 = keras.layers.Activation('relu')(conv3)
 	conv3 = keras.layers.Dropout(dropout)(conv3) ### Trying dropout layers earlier on, as indicated in the paper
 	conv3 = keras.layers.Conv3D(name="conv3b", filters=256, **params)(conv3)
+	conv3 = keras.layers.BatchNormalization()(conv3)
+	conv3 = keras.layers.Activation('relu')(conv3)
 	pool3 = keras.layers.MaxPooling3D(name="pool3", pool_size=(2, 2, 2))(conv3)
 
 	conv4 = keras.layers.Conv3D(name="conv4a", filters=256, **params)(pool3)
+	conv4 = keras.layers.BatchNormalization()(conv4)
+	conv4 = keras.layers.Activation('relu')(conv4)
 	conv4 = keras.layers.Dropout(dropout)(conv4) ### Trying dropout layers earlier on, as indicated in the paper
 	conv4 = keras.layers.Conv3D(name="conv4b", filters=512, **params)(conv4)
+	conv4 = keras.layers.BatchNormalization()(conv4)
+	conv4 = keras.layers.Activation('relu')(conv4)
 
 	if use_upsampling:
 		up4 = keras.layers.concatenate([keras.layers.UpSampling3D(name="up4", size=(2, 2, 2))(conv4), conv3], axis=concat_axis)
@@ -125,7 +145,11 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 
 
 	conv5 = keras.layers.Conv3D(name="conv5a", filters=256, **params)(up4)
+	conv5 = keras.layers.BatchNormalization()(conv5)
+	conv5 = keras.layers.Activation('relu')(conv5)
 	conv5 = keras.layers.Conv3D(name="conv5b", filters=256, **params)(conv5)
+	conv5 = keras.layers.BatchNormalization()(conv5)
+	conv5 = keras.layers.Activation('relu')(conv5)
 
 	if use_upsampling:
 		up5 = keras.layers.concatenate([keras.layers.UpSampling3D(name="up5", size=(2, 2, 2))(conv5), conv2], axis=concat_axis)
@@ -134,7 +158,11 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 						   kernel_size=(2, 2, 2), strides=(2, 2, 2), padding="same")(conv5), conv2], axis=concat_axis)
 
 	conv6 = keras.layers.Conv3D(name="conv6a", filters=128, **params)(up5)
+	conv6 = keras.layers.BatchNormalization()(conv6)
+	conv6 = keras.layers.Activation('relu')(conv6)
 	conv6 = keras.layers.Conv3D(name="conv6b", filters=128, **params)(conv6)
+	conv6 = keras.layers.BatchNormalization()(conv6)
+	conv6 = keras.layers.Activation('relu')(conv6)
 
 	if use_upsampling:
 		up6 = keras.layers.concatenate([keras.layers.UpSampling3D(name="up6", size=(2, 2, 2))(conv6), conv1], axis=concat_axis)
@@ -143,11 +171,19 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 						   kernel_size=(2, 2, 2), strides=(2, 2, 2), padding="same")(conv6), conv1], axis=concat_axis)
 
 	conv7 = keras.layers.Conv3D(name="conv7a", filters=128, **params)(up6)
+	conv7 = keras.layers.BatchNormalization()(conv7)
+	conv7 = keras.layers.Activation('relu')(conv7)
 	conv7 = keras.layers.Conv3D(name="conv7b", filters=128, **params)(conv7)
+	conv7 = keras.layers.BatchNormalization()(conv7)
+	conv7 = keras.layers.Activation('relu')(conv7)
+
 	pred_msk = keras.layers.Conv3D(name="PredictionMask", filters=n_out, kernel_size=(1, 1, 1),
 					data_format=data_format, activation="sigmoid")(conv7)
 
+	#Branch is created from conv7 which are feature maps
+	#But global avg pooling on feature maps is not helping and hence changing back to pred_msk
 	class_pred = keras.layers.GlobalAveragePooling3D(name='PredictionClass')(pred_msk)
+
 	if print_summary:
 		model = keras.models.Model(inputs=[inputs], outputs=[pred_msk,class_pred])
 		#model = keras.models.Model(inputs=[inputs], outputs=[class_pred])
@@ -156,6 +192,21 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 	# return pred
 	return model
 
+# Branch checkpointer
+from keras.callbacks import Callback
+
+class WeightsSaver(Callback):
+	def __init__(self, model, N, fname):
+		self.model = model
+		self.N = N
+		self.batch = 0
+		self.fname = fname
+
+	def on_batch_end(self, batch, logs={}):
+		if self.batch % self.N == 0:
+			self.model.save_weights(self.fname+'weights.h5')
+			self.model.save(self.fname +'checkpoint.h5')
+		self.batch += 1
 
 patch_dim = 64
 max_diam = 33 # this need to be changed to general data specific
@@ -164,15 +215,15 @@ max_diam = 33 # this need to be changed to general data specific
 masks = {}
 max_radius = math.ceil(max_diam/2)
 for radius in range(max_radius):
-    mask = np.zeros((patch_dim,patch_dim,patch_dim,1))
-    if radius > 0:
-        for i in range(patch_dim):
-            for j in range(patch_dim):
-                for k in range(patch_dim):
-                    half = patch_dim/2
-                    if (np.sqrt((i-half)**2+(j-half)**2+(k-half)**2) <=radius):
-                        mask[i,j,k]=1
-    masks[radius]=mask
+	mask = np.zeros((patch_dim,patch_dim,patch_dim,1))
+	if radius > 0:
+		for i in range(patch_dim):
+			for j in range(patch_dim):
+				for k in range(patch_dim):
+					half = patch_dim/2
+					if (np.sqrt((i-half)**2+(j-half)**2+(k-half)**2) <=radius):
+						mask[i,j,k]=1
+	masks[radius]=mask
 
 
 def get_class_idx(hdf5_file, classid = 0):
@@ -405,6 +456,12 @@ def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
 
 		classes = hdf5_file["output"][random_idx, 0]
 
+		# Normalization to HO units
+
+		for i in range(len(random_idx)):
+			temp_img  = imgs[i,:,:,:,0]
+			imgs[i,:,:,:,0] = normalize(temp_img)
+
 		if not validation:  # Training need augmentation. Validation does not.
 			## Need to augment
 			imgs, msks = augment_data(imgs, msks, False)
@@ -415,6 +472,13 @@ def generate_data(hdf5_file, batch_size=50, subset=0, validation=False):
 		classes = hdf5_file["output"][random_idx, 0]
 
 		yield [imgs], [msks, classes]
+
+def normalize(img):
+	maxHU, minHU = 400., -1000.
+	img = (img - minHU) / (maxHU - minHU)
+	img[img>1] = 1.
+	img[img<0] = 0.
+	return img
 
 
 def get_idx_for_onesubset(hdf5_file, subset=0):
@@ -480,11 +544,6 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 				  loss={'PredictionMask': dice_coef_loss, 'PredictionClass': 'binary_crossentropy'}, loss_weights={'PredictionMask': 1., 'PredictionClass': 0.2},
 				  metrics={'PredictionMask':dice_coef,'PredictionClass': 'accuracy'})
 
-    # save as JSON and saving model weights
-	UNET_json_arch = model.to_json()
-	model.save('UNET_model.h5')
-	model.save_weights('UNET_weights.h5')
-
 	# print(model.summary())
 
 	validation_batch_size = 16
@@ -492,8 +551,13 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 	validation_generator = generate_data(hdf5_file, validation_batch_size, subset=HOLDOUT_SUBSET, validation=True)
 
 	history = model.fit_generator(train_generator,
-						#steps_per_epoch=4,epochs=1, # this needs to be changed to back to below actual steps per epoch and origninal epochs
+						#steps_per_epoch=1,epochs=1, # this needs to be changed to back to below actual steps per epoch and origninal epochs
 						steps_per_epoch=num_rows//batch_size, epochs=1,
 						validation_data = validation_generator,
 						validation_steps = 100,
-						callbacks=[tb_log, checkpointer])
+						callbacks=[tb_log, checkpointer,WeightsSaver(model, 20, CHECKPOINT_FILENAME)])
+
+	# save as JSON and saving model weights
+	UNET_json_arch = model.to_json()
+	model.save('UNET_model_H{}.h5'.format(HOLDOUT_SUBSET))
+	model.save_weights('UNET_weights_H{}.h5'.format(HOLDOUT_SUBSET))
