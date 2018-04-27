@@ -543,7 +543,7 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 				  #loss=[dice_coef_loss],#pred_msk,class_pred
 				  #loss={'main_output': 'binary_crossentropy', 'aux_output': 'binary_crossentropy'}, loss_weights={'main_output': 1., 'aux_output': 0.2})
 				  #loss=[dice_coef_loss,'binary_crossentropy'],
-				  loss={'PredictionMask': dice_coef_loss, 'PredictionClass': 'binary_crossentropy'}, loss_weights={'PredictionMask': 1., 'PredictionClass': 0.2},
+				  loss={'PredictionMask': dice_coef_loss, 'PredictionClass': 'binary_crossentropy'}, loss_weights={'PredictionMask': 0.8, 'PredictionClass': 0.2},
 				  metrics={'PredictionMask':dice_coef,'PredictionClass': 'accuracy'})
 
 	# print(model.summary())
