@@ -172,10 +172,10 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 		up6 = keras.layers.concatenate([keras.layers.Conv3DTranspose(name="transConv6", filters=128, data_format=data_format,
 						   kernel_size=(2, 2, 2), strides=(2, 2, 2), padding="same")(conv6), conv1], axis=concat_axis)
 
-	conv7 = keras.layers.Conv3D(name="conv7a", filters=128, **params)(up6)
+	conv7 = keras.layers.Conv3D(name="conv7a", filters=64, **params)(up6)
 	conv7 = keras.layers.BatchNormalization(axis =-1)(conv7)
 	conv7 = keras.layers.Activation('relu')(conv7)
-	conv7 = keras.layers.Conv3D(name="conv7b", filters=128, **params)(conv7)
+	conv7 = keras.layers.Conv3D(name="conv7b", filters=32, **params)(conv7)
 	conv7 = keras.layers.BatchNormalization(axis =-1)(conv7)
 	conv7 = keras.layers.Activation('relu')(conv7)
 
@@ -186,8 +186,9 @@ def unet3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 	#But global avg pooling on feature maps is not helping and hence changing back to pred_msk
 	class_pred = keras.layers.GlobalAveragePooling3D(name='PredictionClass')(pred_msk)
 
+	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk,class_pred])
+
 	if print_summary:
-		model = keras.models.Model(inputs=[inputs], outputs=[pred_msk,class_pred])
 		#model = keras.models.Model(inputs=[inputs], outputs=[class_pred])
 		model.summary()
 
