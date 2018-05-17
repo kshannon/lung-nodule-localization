@@ -62,9 +62,90 @@ def normalize_img(img):
 
 	return img_norm
 
+def create_unet3D_Model_A(input_img, use_upsampling=False, n_out=1, dropout=0.2,
+			print_summary = False):
+	"""
+	3D U-Net model - Model-A
+	"""
+	concat_axis = -1
+	data_format = "channels_last"
+	# print("3D U-Net Segmentation")
+	# Set keras learning phase to train
+	keras.backend.set_learning_phase(True)
 
-# concat_axis = -1
-# data_format = "channels_last"
+	# Don"t initialize variables on the fly
+	keras.backend.manual_variable_initialization(False)
+
+	inputs = keras.layers.Input(shape=input_img, name="Input_Image")
+
+	# Use below if wanted to use batch normalization and Relu activation separately
+	params = dict(kernel_size=(3, 3, 3), activation=None,
+				  padding="same", data_format=data_format,
+				  kernel_initializer="he_uniform")
+
+	# params = dict(kernel_size=(3, 3, 3), activation="relu",
+	# 			  padding="same", data_format=data_format,
+	# 			  kernel_initializer="he_uniform")
+
+	conv1 = keras.layers.Conv3D(name="conv1a", filters=32, **params)(inputs)
+	# conv1 = keras.layers.BatchNormalization(axis =-1)(conv1)
+	conv1 = keras.layers.Activation('relu')(conv1)
+	conv1 = keras.layers.Conv3D(name="conv1b", filters=64, **params)(conv1)
+	# conv1 = keras.layers.BatchNormalization(axis =-1)(conv1)
+	conv1 = keras.layers.Activation('relu')(conv1)
+	pool1 = keras.layers.MaxPooling3D(name="pool1", pool_size=(2, 2, 2))(conv1)
+
+	conv2 = keras.layers.Conv3D(name="conv2a", filters=64, **params)(pool1)
+	# conv2 = keras.layers.BatchNormalization(axis =-1)(conv2)
+	conv2 = keras.layers.Activation('relu')(conv2)
+	conv2 = keras.layers.Conv3D(name="conv2b", filters=128, **params)(conv2)
+	# conv2 = keras.layers.BatchNormalization(axis =-1)(conv2)
+	conv2 = keras.layers.Activation('relu')(conv2)
+	pool2 = keras.layers.MaxPooling3D(name="pool2", pool_size=(2, 2, 2))(conv2)
+
+	conv3 = keras.layers.Conv3D(name="conv3a", filters=128, **params)(pool2)
+	# conv3 = keras.layers.BatchNormalization(axis =-1)(conv3)
+	conv3 = keras.layers.Activation('relu')(conv3)
+	conv3 = keras.layers.Dropout(dropout)(conv3) ### Trying dropout layers earlier on, as indicated in the paper
+	conv3 = keras.layers.Conv3D(name="conv3b", filters=256, **params)(conv3)
+	# conv3 = keras.layers.BatchNormalization(axis =-1)(conv3)
+	conv3 = keras.layers.Activation('relu')(conv3)
+
+	if use_upsampling:
+		up3 = keras.layers.concatenate([keras.layers.UpSampling3D(name="up3", size=(2, 2, 2))(conv3), conv2], axis=concat_axis)
+	else:
+		up3 = keras.layers.concatenate([keras.layers.Conv3DTranspose(name="transConv3", filters=256, data_format=data_format,
+						   kernel_size=(2, 2, 2), strides=(2, 2, 2), padding="same")(conv3), conv2], axis=concat_axis)
+
+
+	conv4 = keras.layers.Conv3D(name="conv4a", filters=128, **params)(up3)
+	conv4 = keras.layers.Activation('relu')(conv4)
+	conv4 = keras.layers.Conv3D(name="conv4b", filters=128, **params)(conv4)
+	conv4 = keras.layers.Activation('relu')(conv4)
+
+	if use_upsampling:
+		up4 = keras.layers.concatenate([keras.layers.UpSampling3D(name="up4", size=(2, 2, 2))(conv4), conv1], axis=concat_axis)
+	else:
+		up4 = keras.layers.concatenate([keras.layers.Conv3DTranspose(name="transConv4", filters=128, data_format=data_format,
+						   kernel_size=(2, 2, 2), strides=(2, 2, 2), padding="same")(conv4), conv1], axis=concat_axis)
+
+	conv5 = keras.layers.Conv3D(name="conv5a", filters=64, **params)(up4)
+	conv5 = keras.layers.Activation('relu')(conv5)
+	conv5 = keras.layers.Conv3D(name="conv5b", filters=32, **params)(conv5)
+	conv5 = keras.layers.Activation('relu')(conv5)
+
+
+	pred_msk = keras.layers.Conv3D(name="PredictionMask", filters=n_out, kernel_size=(1, 1, 1),
+					data_format=data_format, activation="sigmoid")(conv5)
+
+	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk])
+
+	if print_summary:
+		#model = keras.models.Model(inputs=[inputs], outputs=[class_pred])
+		model.summary()
+
+	# return pred
+	return model
 
 def create_UNET3D(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 			print_summary = False):
