@@ -138,7 +138,7 @@ def create_unet3D_Model_A(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 	pred_msk = keras.layers.Conv3D(name="PredictionMask", filters=n_out, kernel_size=(1, 1, 1),
 					data_format=data_format, activation="sigmoid")(conv5)
 
-	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk])
+	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk, conv5])
 
 	if print_summary:
 		#model = keras.models.Model(inputs=[inputs], outputs=[class_pred])
