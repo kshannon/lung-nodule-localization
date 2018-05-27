@@ -61,6 +61,22 @@ def normalize_img(img):
 	img_norm.SetOrigin(np.array(img.GetOrigin()) / np.array(new_spacing))
 
 	return img_norm
+	
+def makeMasks():
+    masks = {}
+    max_radius = 16
+    patch_dim = 64
+    for radius in range(max_radius):
+        mask = np.zeros((patch_dim,patch_dim,patch_dim,1))
+        if radius > 0:
+            for i in range(patch_dim):
+                for j in range(patch_dim):
+                    for k in range(patch_dim):
+                        half = patch_dim/2
+                        if (np.sqrt((i-half)**2+(j-half)**2+(k-half)**2) <=radius):
+                            mask[i,j,k]=1
+        masks[radius]=mask
+    return masks
 
 def create_unet3D_Model_A(input_img, use_upsampling=False, n_out=1, dropout=0.2,
 			print_summary = False):
