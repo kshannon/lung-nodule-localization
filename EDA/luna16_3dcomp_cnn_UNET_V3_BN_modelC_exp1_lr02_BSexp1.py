@@ -30,7 +30,7 @@ crop_shape = (48,48,48,1) # Change to correct crop shape
 
 import time
 # Save Keras model to this file
-CHECKPOINT_FILENAME = "./cnn_3DUNET_ModelB_exp1_lr02_BSexp1_64_64_64_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
+CHECKPOINT_FILENAME = "./cnn_3DUNET_ModelC_exp1_lr02_BSexp1_64_64_64_HOLDOUT{}".format(HOLDOUT_SUBSET) + time.strftime("_%Y%m%d_%H%M%S") + ".hdf5"
 
 print(CHECKPOINT_FILENAME)
 
@@ -568,5 +568,5 @@ with h5py.File(path_to_hdf5, 'r') as hdf5_file: # open in read-only mode
 
 	# save as JSON and saving model weights
 	#UNET_json_arch = model.to_json()
-	model.save('UNET_modelB_exp1_lr02_BSexp1_H{}.h5'.format(HOLDOUT_SUBSET))
-	model.save_weights('UNET_weights_modelB_exp1_lr02_BSexp1_H{}.h5'.format(HOLDOUT_SUBSET))
+	model.save('UNET_modelC_exp1_lr02_BSexp1_H{}.h5'.format(HOLDOUT_SUBSET))
+	model.save_weights('UNET_weights_modelC_exp1_lr02_BSexp1_H{}.h5'.format(HOLDOUT_SUBSET))
