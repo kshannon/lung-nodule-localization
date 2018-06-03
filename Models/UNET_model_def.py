@@ -444,7 +444,7 @@ def unet3D_sizeagnostic_Model16(use_upsampling=True, n_out=1, dropout=0.2,
 	#But global avg pooling on feature maps is not helping and hence changing back to pred_msk
 	# class_pred = keras.layers.GlobalAveragePooling3D(name='PredictionClass')(pred_msk)
 
-	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk])
+	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk, conv7])
 	# model = keras.models.Model(inputs=[inputs], outputs=[pred_msk,class_pred])
 
 	if print_summary:
@@ -559,7 +559,7 @@ def unet3D_Model6_Model13(input_img, use_upsampling=True, n_out=1, dropout=0.2,
 	#But global avg pooling on feature maps is not helping and hence changing back to pred_msk
 	# class_pred = keras.layers.GlobalAveragePooling3D(name='PredictionClass')(pred_msk)
 
-	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk])
+	model = keras.models.Model(inputs=[inputs], outputs=[pred_msk, conv7])
 	# model = keras.models.Model(inputs=[inputs], outputs=[pred_msk,class_pred])
 
 	if print_summary:
