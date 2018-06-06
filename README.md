@@ -30,6 +30,11 @@ The data we used comes from the The [LUNA16](https://luna16.grand-challenge.org/
 ### Prerequisites
 A list of conda/pip environment dependencies can be found in the environments.yml file. To create a conda env with all of the dependencies run the create_conda_env.sh shell script. We are also using Tensorflow and Keras with GPU support.
 
+### Results
+Below is a short movie showing our unet model performing pixel-wise predictions on a 3D CT scan. The red circle shows where a nodule is on the CT scan, the yellow box shows a nodule our model missed and we included a feature map from the unet model. 
+
+![CT Predictions](./images/CT-prediction-results-unet.gif)
+
 ### Authors
 - Tony Reina
 - [Kyle Shannon](https://github.com/kshannon)
