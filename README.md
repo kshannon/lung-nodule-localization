@@ -24,6 +24,9 @@ of two metrics: (1) nodule detection and localization and (2) nodule false posit
 ## Getting Started
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
 
+### Data
+The data we used comes from the The [LUNA16](https://luna16.grand-challenge.org/home/) competition website. It consists of 888 CT DICOM scans, along with several CSV files. The whole data set is about 300gb uncompressed. It is open sourced through creative commons and you simply need to make a free account to be given a download link. Note that we take these CT scans and create patches which are 64x64x64 numpy tensors, which are flattened and stored in an HDF5 storage object. The resulting object is about 800gb large and takes around 30 hours on a modern computer. 
+
 ### Prerequisites
 A list of conda/pip environment dependencies can be found in the environments.yml file. To create a conda env with all of the dependencies run the create_conda_env.sh shell script. We are also using Tensorflow and Keras with GPU support.
 
