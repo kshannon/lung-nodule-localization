@@ -21,28 +21,39 @@ within this dataset. The [LUNA16](https://luna16.grand-challenge.org/home/) webs
 leaderboard of both industry and academic teams which have achieve the highest scores in one
 of two metrics: (1) nodule detection and localization and (2) nodule false positive reduction.
 
-## Getting Started
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+The instructions below will get you a copy of the project up and running on your local machine for development and testing purposes.
 
-### Data
+# Table of Contents
+1. [Data](#Data)
+2. [Prerequisites](#Prerequisites)
+3. [Steps](#Steps)
+4. [Results](#Results)
+5. [Authors](#Authors)
+6. [Acknowledgments](#Acknowledgments)
+
+## Data
 The data we used comes from the The [LUNA16](https://luna16.grand-challenge.org/home/) competition website. It consists of 888 CT DICOM scans, along with several CSV files. The whole data set is about 300gb uncompressed. It is open sourced through creative commons and you simply need to make a free account to be given a download link. Note that we take these CT scans and create patches which are 64x64x64 numpy tensors, which are flattened and stored in an HDF5 storage object. The resulting object is about 800gb large and takes around 30 hours on a modern computer. 
 
-### Prerequisites
+## Prerequisites
 A list of conda/pip environment dependencies can be found in the environments.yml file. To create a conda env with all of the dependencies run the create_conda_env.sh shell script. We are also using Tensorflow and Keras with GPU support.
 
-### Results
+## Steps
+1. step1
+2. step2
+
+## Results
 Below is a short movie showing our unet model performing pixel-wise predictions on a 3D CT scan. The red circle shows where a nodule is on the CT scan, the yellow box shows a nodule our model missed and we included a feature map from the unet model. 
 
 ![CT Predictions](./images/CT-prediction-results-unet.gif)
 
-### Authors
+## Authors
 - Tony Reina
 - [Kyle Shannon](https://github.com/kshannon)
 - Suman Gunnala
 - Anil Luthra
 
-### Acknowledgments
+## Acknowledgments
 We would like to thank our Advisors, Dr. Mehrdad Yazdani and Dr. Bradley Voytek  for their continued support and feedback!
 
-### License
+## License
 This project is licensed under the MIT License - see the LICENSE.md file for details
