@@ -1,6 +1,8 @@
 # Project Specific Files & Directories
 *.h5
 *.hdf5
+*.npz
+*.savez
 data/
 logs/
 z_mine/
