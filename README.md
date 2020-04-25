@@ -36,7 +36,7 @@ Below is a short movie showing our unet model performing pixel-wise predictions 
 
 ## Authors
 - Tony Reina
-- [Kyle Shannon](https://github.com/kshannon)
+- [Kyle Shannon](https://kmshannon.com)
 - Suman Gunnala
 - Anil Luthra
 
