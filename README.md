@@ -23,14 +23,6 @@ of two metrics: (1) nodule detection and localization and (2) nodule false posit
 
 The instructions below will get you a copy of the project up and running on your local machine for development and testing purposes.
 
-# Table of Contents
-1. [Data](#Data)
-2. [Prerequisites](#Prerequisites)
-3. [Steps](#Steps)
-4. [Results](#Results)
-5. [Authors](#Authors)
-6. [Acknowledgments](#Acknowledgments)
-
 ## Data
 The data we used comes from the The [LUNA16](https://luna16.grand-challenge.org/home/) competition website. It consists of 888 CT DICOM scans, along with several CSV files. The whole data set is about 300gb uncompressed. It is open sourced through creative commons and you simply need to make a free account to be given a download link. Note that we take these CT scans and create patches which are 64x64x64 numpy tensors, which are flattened and stored in an HDF5 storage object. The resulting object is about 800gb large and takes around 30 hours on a modern computer. 
 
